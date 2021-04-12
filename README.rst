@@ -30,7 +30,7 @@ and radial exponents of the two shells, as well as the polarization operator and
 
 .. code-block:: python
 
-   $ from polarization_integrals import PolarizationIntegral
+   from polarization_integrals import PolarizationIntegral
 
    # s- and p-shell
    li, lj = 0,1
