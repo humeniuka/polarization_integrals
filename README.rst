@@ -1,4 +1,43 @@
 
+library for evaluating polarization integrals according to Schwerdtfeger et al. (1988) (Reference [CPP]).
+
+Polarization Integrals
+----------------------
+The polarization integrals are defined as
+
+.. math::
+
+   \langle \text{CGTO}_i \vert \frac{x^{m_x} y^{m_y} z^{m_z}}{r^k} \left(1 - e^{-\alpha r} \right)^q \vert \text{CGTO}_j \rangle
+
+between unnormalized primitive Cartesian Gaussian functions 
+
+.. math::
+
+   \text{CGTO}_i(x,y,z) = (x - x_i)^{n_{xi}} (y - y_i)^{n_{yi}} (z - z_i)^{n_{zi}} \exp\left(-\beta_i (\vec{r} - \vec{r}_i)^2 \right)
+
+and
+
+.. math::
+   
+   \text{CGTO}_j(x,y,z) = (x - x_j)^{n_{xj}} (y - y_j)^{n_{yj}} (z - z_j)^{n_{zj}} \exp\left(-\beta_j (\vec{r} - \vec{r}_j)^2 \right)
+
+   
+for :math:`k > 2`. The power of the cutoff function :math:`q` has to satisfy
+
+.. math::
+   
+  q \geq \kappa(k/2) - \kappa(m_x/2) - \kappa(m_y/2) - \kappa(m_z/2) - 1
+
+where
+
+.. math::
+
+   \kappa = \begin{cases} \frac{n}{2}   \quad \text{, if n is even } \\
+                          \frac{n+1}{2} \quad \text{, if n is odd }
+	    \end{cases}
+   
+
+
 Requirements
 ------------
  - python3
@@ -21,9 +60,9 @@ To check the proper functioning of the code, it is recommended to run a set of t
 
 Example
 -------
-The following code evaluates the matrix elements of the operator `r^{-4}` between an
+The following code evaluates the matrix elements of the operator :math:`r^{-4}` between an
 unnormalized s-orbital at the origin and a shell of unnnormalized p-orbitals at the
-point rj=(0.0, 0.0, 1.0).
+point :math:`\vec{r}_j=(0.0, 0.0, 1.0)`.
 
 First a `PolarizationIntegral` is created, which needs to know the centers, angular momenta 
 and radial exponents of the two shells, as well as the polarization operator and the cutoff function:
@@ -33,7 +72,7 @@ and radial exponents of the two shells, as well as the polarization operator and
    from polarization_integrals import PolarizationIntegral
 
    # s- and p-shell
-   li, lj = 0,1
+   li, lj = 0, 1
    # Op = r^{-4}
    k, mx,my,mz = 4, 0,0,0
    # cutoff function
@@ -58,3 +97,12 @@ from each shell.
    # <s|Op|pz>
    print( I.compute_pair(0,0,0,  0,0,1) )
 
+
+References
+----------
+[CPP] P. Schwerdtfeger, H. Silberbach,
+      'Multicenter integrals over long-range operators using Cartesian Gaussian functions',
+      Phys. Rev. A 37, 2834
+      https://doi.org/10.1103/PhysRevA.37.2834
+[CPP-Erratum] Phys. Rev. A 42, 665
+      https://doi.org/10.1103/PhysRevA.42.665
