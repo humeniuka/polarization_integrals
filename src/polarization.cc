@@ -12,7 +12,7 @@ and the polarization integrals
              mx  my  mz
             x   y   z           - alpha r  q
   <CGTO   | ----------- (1 - exp          )   |CGTO  >
-       i        r^{-k}                             j
+       i        r^k                                j
 
 between unnormalized primitive Cartesian Gaussian functions 
 
@@ -50,8 +50,6 @@ External Libraries
 #include <cmath>
 #include <cassert>
 #include <iostream>
-
-#include <pybind11/pybind11.h>
 
 #include "Faddeeva.hh"
 extern double Faddeeva::erf(double x);
@@ -438,19 +436,5 @@ double test_d_func(double x, int p) {
   delete[] darr;
   
   return dret;
-}
-
-namespace py = pybind11;
-
-PYBIND11_MODULE(polarization, m) {
-  py::class_<PolarizationIntegral>(m, "PolarizationIntegral")
-    .def(py::init<
-	 double, double, double, int, double,
-	 double, double, double, int, double,
-	 int, int, int, int,
-	 double, int
-	 >())
-    .def("compute_pair", &PolarizationIntegral::compute_pair);
-  m.def("test_d_func", &test_d_func, "test implementation of d(p+1/2,x)");
 }
 
