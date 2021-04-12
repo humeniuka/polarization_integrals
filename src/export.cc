@@ -8,6 +8,11 @@
 namespace py = pybind11;
 using namespace pybind11::literals;
 
+// <for testing only
+extern double test_d_func(double x, int p, double w0);
+extern double test_d_func_zero_limit(double x, int p, double w0);
+// >
+
 PYBIND11_MODULE(_polarization, m) {
   py::class_<PolarizationIntegral>(m, "PolarizationIntegral")
     .def(py::init<
@@ -128,6 +133,9 @@ where `li` and `lj` are the angular momenta specified when creating the `Polariz
 )LITERAL",
 	 "nxi"_a, "nyi"_a, "nzi"_a,
 	 "nxj"_a, "nyj"_a, "nzj"_a);
-  //m.def("test_d_func", &test_d_func, "test implementation of d(p+1/2,x)");
+  // <only for testing
+  m.def("test_d_func", &test_d_func, "test implementation of d(p+1/2,x)");
+  m.def("test_d_func_zero_limit", &test_d_func_zero_limit, "test implementation of \tilde{d}(p+1/2,x)");
+  // >
 }
 

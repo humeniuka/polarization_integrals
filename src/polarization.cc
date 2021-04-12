@@ -111,12 +111,12 @@ void d_func(double x, int p_min, int p_max, double w0, double *d) {
 
    */
   assert((p_min <= 0) && (p_max >= 0));
+  int p;
+  double xp, ixp;
   // constants during iteration
   double expx = exp(x-w0);
   double sqrtx = sqrt(x);
   double dwsn = Faddeeva::Dawson(sqrtx);
-  int p;
-  double xp, ixp;
   
   // initialization p=0
   d[0] = 2*expx * dwsn;
@@ -140,6 +140,76 @@ void d_func(double x, int p_min, int p_max, double w0, double *d) {
   // returns nothing, output is in array d
 }
 
+void d_func_zero_limit(double x, int p_min, int p_max, double w0, double *d) {
+  /*
+    The function \tilde{d} also computes d(p+1/2,x), however without the factor x^{p+1/2}:
+
+      ~             p+1/2
+      d(p+1/2,x) = x      d(p+1/2,x)          for all integers p
+
+    This ensures that \tilde{d} has a finite value in the limit x -> 0.
+
+    Arguments
+    ---------
+    x            : double >= 0
+      upper limit of integration
+    p_min, p_max : int, p_min <= 0, pmax >= 0
+      defines range of values for integer p, p_min <= p <= p_max
+    w0           : double or array with same shape as x
+      To avoid overflow in the exponential function, exp(-w0) * \tilde{d}(p+1/2,x) is calculated.
+    d            : pointer to allocated array of doubles of size |p_min|+p_max+1
+      The integrals 
+        d[p] = exp(-w0) * \tilde{d}(p+1/2,x) 
+      are stored in this output array. The memory has to be allocated and
+      released by the caller. 
+      `d` should point to the pmin-th element of the array, so that the elements
+      p=p_min,p_min+1,...,-1,0,1,...,p_max can be accessed as d[p]
+
+   */
+  assert((p_min <= 0) && (p_max >= 0));
+  int p, k;
+  double y;
+  // constants during iteration
+  double expx = exp(x-w0);
+
+  // zero output array for indices p=0,...,p_max,
+  // the memory locations pmin,...,-1 are overwritten, anyway.
+  fill(d, d+p_max+1, 0.0);
+  
+  /*
+   1) For p >= 0, \tilde{d} is calculated from the Taylor expansion around x=0.
+    
+          ~          inf     x^k
+          d (x) = sum     ------------
+           p         k=0  k! (p+k+1/2)
+    
+      The Taylor expansion is truncated at k_max = 20
+  */
+  const int k_max = 20;
+  // y = x^k / k! * exp(-w0)
+  y = exp(-w0);
+  for(k=0; k < k_max; k++) {
+    for(p=0; p <= p_max; p++) {
+      d[p] += y/(p+k+0.5);
+    }
+    y *= x/(k+1);
+  }
+
+  /*
+   2) For -p < 0, \tilde{d} is obtained by downward iteration starting from p=0
+      according to the prescription
+   
+         ~              1       x        ~
+         d       = - ------- ( e   -  x  d   )
+          -(p+1)      p+1/2               -p
+  */
+  for(p=0; p < -p_min; p++) {
+    d[-(p+1)] = - (expx - x*d[-p])/(p+0.5);
+  }
+
+  // returns nothing, output is in array d  
+}
+  
 inline int kappa(int n) {
   if (n % 2 == 0) {
     return n/2;
@@ -218,10 +288,18 @@ PolarizationIntegral::PolarizationIntegral(
   */
   int mu, p_min, p_max, s;
   double a_mu, x, invx;
+  double a_mu_jm32, a_mu_pow; 
+  
+  double test_binom_nu = 0.0;
+  double binom_jm1_nu = 1.0;
+  int nu;
+
+  // threshold for switching to implementation for small x = b^2/a_mu
+  const double x_small = 1.0e-2;
   
   p_min = min(0, -j+1);
   p_max = s_max;
-  double *darr = new double[-p_min+p_max+1];
+  double *darr = new double[-p_min+p_max+1]();
   // Shift pointer to array element for p=0, so that
   // the indices of d can be positive or negative.
   double *d = (darr-p_min);
@@ -232,52 +310,96 @@ PolarizationIntegral::PolarizationIntegral(
     // eqn. (15)
     a_mu = beta_i + beta_j + mu*alpha;
     x = b2/a_mu;
-    assert(x > 1.0e-4 && "b -> 0 limit not yet implemented");
-    invx = 1.0/x;
-    
-    /* Case 1: k=2*j, eqn. (22) */
-    if (k % 2 == 0) {
-      // compute integrals d(p+1/2,x)
-      d_func(x, p_min, p_max, w0, d);
-      
-      double test_binom_nu = 0.0;
-      double binom_jm1_nu = 1.0;
-      int nu;
-      for(nu=0; nu <= j-1; nu++) {
-	b_pow = b2jm3;
-	for (s=0; s<=s_max; s++) {
-	  // eqn. (22)
-	  integs[s] += c * binom_q_mu * binom_jm1_nu * b_pow * d[s-j+nu+1];
-	  
-	  assert((s-j+nu+1 <= p_max) && (p_min <= s-j+nu+1 ));
-	  assert(abs(b_pow - pow(b,-2*s+2*j-3))/abs(b_pow) < 1.0e-10);
-	  
-	  b_pow /= b2;
+
+    if(x < x_small) {
+      /* x = (b^2/a_mu) -> 0 limit */
+      if (k % 2 == 0) {
+	// Case 1: k=2*j
+	/*
+	                     q                    mu   -s+j-3/2     j-1                     nu
+	   integs[s] = c  sum     binom(q,mu) (-1)    a          sum      binom(j-1,nu) (-1)    \tilde{d}(s-j+nu+1 + 1/2,x)
+                             mu=0                      mu           nu=0                  
+	*/
+	a_mu_jm32 = pow(a_mu, j-1.5);
+
+	// compute integrals \tilde{d}(p+1/2,x)
+	d_func_zero_limit(x, p_min, p_max, w0, d);
+	// array d contains \tilde{d}_p = x^{-p-1/2} d_p
+
+	test_binom_nu = 0.0;
+	binom_jm1_nu = 1.0;
+	for(nu=0; nu <= j-1; nu++) {
+	  // a_mu_pow = a_mu^{-s+j-3/2}
+	  a_mu_pow = a_mu_jm32;
+	  for (s=0; s<=s_max; s++) {
+	    // eqn. (22)
+	    integs[s] += c * binom_q_mu * binom_jm1_nu * a_mu_pow * d[s-j+nu+1];
+	    // 
+	    assert((s-j+nu+1 <= p_max) && (p_min <= s-j+nu+1 ));
+	    assert(abs(a_mu_pow - pow(a_mu,-s+j-1.5))/abs(a_mu_pow) < 1.0e-10);
+
+	    a_mu_pow /= a_mu;
+	  }
+	  test_binom_nu += binom_jm1_nu;
+	  // update binomial coefficients for next iteration
+	  //  B_{n,k+1} = x (n-k)/(k+1) B_{n,k}
+	  binom_jm1_nu *= ((-1) * (j-1-nu))/(nu + 1.0);
 	}
-	test_binom_nu += binom_jm1_nu;
-	// update binomial coefficients for next iteration
-	//  B_{n,k+1} = x (n-k)/(k+1) B_{n,k}
-	binom_jm1_nu *= ((-invx) * (j-1-nu))/(nu + 1.0);
+	assert(abs(test_binom_nu) < 1.0e-10);
+      } else {
+	// Case 2: k=2*j+1
+	assert(1 == 2 && "not implemented yet!");
       }
-      assert(abs(test_binom_nu - pow(1 - invx, j-1)) < 1.0e-10);
-      
-    } else {
-      assert(1 == 2 && "Case 2 (k=2*j+1) not implemented yet");
-      // Case 2: k=2*j+1
-      for (s=0; s<=s_max; s++) {
-	if (s-j >= 0) {
-	  // Subcase 1: s-j >= 0, eqn. (32)
-	  integs[s] = c;
-	} else {
-	  // Subcase 2: s-j < 0, eqn. (39)
-	  integs[s] = c;
+    } else { // x > x_small
+      invx = 1.0/x;
+    
+      if (k % 2 == 0) {
+	// Case 1: k=2*j, eqn. (22)
+	/*
+	                     q                    mu   -2*s+2*j-3     j-1                     a   nu                   b^2
+	   integs[s] = c  sum     binom(q,mu) (-1)    b            sum      binom(j-1,nu) (- --- )   d(s-j+nu+1 + 1/2, --- )
+                             mu=0                                     nu=0                   b^2                        a
+	*/
+	// compute integrals d(p+1/2,x)
+	d_func(x, p_min, p_max, w0, d);
+	
+	test_binom_nu = 0.0;
+	binom_jm1_nu = 1.0;
+	for(nu=0; nu <= j-1; nu++) {
+	  b_pow = b2jm3;
+	  for (s=0; s<=s_max; s++) {
+	    // eqn. (22)
+	    integs[s] += c * binom_q_mu * binom_jm1_nu * b_pow * d[s-j+nu+1];
+	    
+	    assert((s-j+nu+1 <= p_max) && (p_min <= s-j+nu+1 ));
+	    assert(abs(b_pow - pow(b,-2*s+2*j-3))/abs(b_pow) < 1.0e-10);
+	    
+	    b_pow /= b2;
+	  }
+	  test_binom_nu += binom_jm1_nu;
+	  // update binomial coefficients for next iteration
+	  //  B_{n,k+1} = x (n-k)/(k+1) B_{n,k}
+	  binom_jm1_nu *= ((-invx) * (j-1-nu))/(nu + 1.0);
+	}
+	assert(abs(test_binom_nu - pow(1 - invx, j-1)) < 1.0e-10);
+      } else {
+	assert(1 == 2 && "Case 2 (k=2*j+1) not implemented yet");
+	// Case 2: k=2*j+1
+	for (s=0; s<=s_max; s++) {
+	  if (s-j >= 0) {
+	    // Subcase 1: s-j >= 0, eqn. (32)
+	    integs[s] = c;
+	  } else {
+	    // Subcase 2: s-j < 0, eqn. (39)
+	    integs[s] = c;
+	  }
 	}
       }
     }
     test_binom_mu += binom_q_mu;
     // update binomial coefficient
     binom_q_mu *= ((-1)*(q-mu))/(mu + 1.0);
-  }
+  } // end of loop over mu
   delete[] darr;
 
   // 0 = (1-1)^q = sum_{mu=0}^q binom(q,mu) (-1)^mu
@@ -421,16 +543,16 @@ double PolarizationIntegral::compute_pair(int nxi, int nyi, int nzi,
 
   return op;
 }
-			      
 
-double test_d_func(double x, int p) {
+// for testing only
+double test_d_func(double x, int p, double w0) {
   int p_min, p_max;
   double dret; 
   p_min = min(0, p);
   p_max = max(0, p);
   double *darr = new double[-p_min+p_max+1]();
   double *d = (darr-p_min);
-  d_func(x, p_min, p_max, 0.0, d);
+  d_func(x, p_min, p_max, w0, d);
 
   dret = d[p];
   delete[] darr;
@@ -438,3 +560,17 @@ double test_d_func(double x, int p) {
   return dret;
 }
 
+double test_d_func_zero_limit(double x, int p, double w0) {
+  int p_min, p_max;
+  double dret; 
+  p_min = min(0, p);
+  p_max = max(0, p);
+  double *darr = new double[-p_min+p_max+1]();
+  double *d = (darr-p_min);
+  d_func_zero_limit(x, p_min, p_max, w0, d);
+
+  dret = d[p];
+  delete[] darr;
+  
+  return dret;
+}
