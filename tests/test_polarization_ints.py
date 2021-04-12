@@ -12,7 +12,7 @@ from polarization_ints_reference import h_func as h_func_reference
 from polarization_ints_reference import polarization_integral as polarization_integral_reference
 from polarization_ints_reference import unique_integrals
 # fast C++ implementation
-from polarization_integrals import polarization
+from polarization_integrals import PolarizationIntegral
 
 
 def d_func(x, pmin, pmax, w0):
@@ -87,6 +87,49 @@ def d_func(x, pmin, pmax, w0):
 
     return d
 
+def d_func_zero_limit(x, pmin, pmax, w0):
+    """
+    The function \tilde{d} also computes d(p+1/2,x), however without the factor x^{p+1/2}:
+
+      ~             p+1/2
+      d(p+1/2,x) = x      d(p+1/2,x)          for all integers p
+
+    This ensures that \tilde{d} has a finite value in the limit x -> 0.
+    """
+    assert pmin <= 0 and pmax >= 0
+    # output array
+    dt = np.zeros(-pmin+pmax+1)
+    # constants during iterations
+    expx = np.exp(x-w0)
+    
+    # 1) For p >= 0, \tilde{d} is calculated from the Taylor expansion around x=0.
+    #
+    #      ~          inf     x^k
+    #      d (x) = sum     ------------
+    #       p         k=0  k! (p+k+1/2)
+    #
+    #    The Taylor expansion is truncated at k_max = 20
+    kmax = 20
+    # y = x^k / k! * exp(-w0)
+    y = np.exp(-w0)
+    for k in range(0, kmax):
+        for p in range(0, pmax):
+            dt[p] += y/(p+k+0.5)
+        y *= x/(k+1)
+
+    # 2) For -p < 0, \tilde{d} is obtained by downward iteration starting from p=0
+    #    according to the prescription
+    #
+    #      ~              1       x        ~
+    #      d       = - ------- ( e   -  x  d   )
+    #       -(p+1)      p+1/2               -p
+    #
+    for p in range(0, -pmin):
+        dt[-(p+1)] = - (expx - x*dt[-p])/(p+0.5)
+
+    return dt
+
+        
 def g_func(x, pmax):
     """
     evaluates the integral
@@ -295,6 +338,28 @@ class TestSchwedtfegerSpecialFunctions(unittest.TestCase):
         # compare the two implementations
         self.assertLess(la.norm(d - d_reference), 1.0e-8)
 
+    def test_d_func_zero_limit(self):
+        """
+        check that 
+
+                         p+1/2   ~
+           d(p+1/2,x) = x        d(p+1/2,x)
+
+        """
+        print("testing \tilde{d}(p+1/2,x)")
+
+        pmin, pmax = -10, 10
+        # random values for testing
+        x = 0.2342
+        w0 = 0.647
+        
+        d = d_func(x, pmin, pmax, w0)
+        d_tilde = d_func_zero_limit(x, pmin, pmax, w0)
+
+        for p in range(pmin, pmax+1):
+            with self.subTest(p=p):
+                self.assertLess( abs(d[p] - x**(p+0.5) * d_tilde[p]), 1.0e-10)
+        
     def test_g_func(self):
         print("testing gamma(p+1/2,x)")
         pmax = 10
@@ -511,10 +576,10 @@ class TestSchwedtfegerSpecialFunctions(unittest.TestCase):
                         for li in range(0, l_max+1):
                             for lj in range(0, l_max+1):
                                 # prepare for integrals between shells with angular momenta li and lj
-                                pol = polarization.PolarizationIntegral(xi,yi,zi, li, beta_i,
-                                                                        xj,yj,zj, lj, beta_j,
-                                                                        k, mx,my,mz,
-                                                                        alpha, q)
+                                pol = PolarizationIntegral(xi,yi,zi, li, beta_i,
+                                                           xj,yj,zj, lj, beta_j,
+                                                           k, mx,my,mz,
+                                                           alpha, q)
                                 for nxi,nyi,nzi in partition3(li):
                                     for nxj,nyj,nzj in partition3(lj):
                                         label=f"k={k} mx={mx} my={my} mz={mz} , q={q} , nxi={nxi} nyi={nyi} nzi={nzi} , nxj={nxj} nyj={nyj} nzj={nzj}"
