@@ -32,8 +32,9 @@ where
 
 .. math::
 
-   \kappa = \begin{cases} \frac{n}{2}   \quad \text{, if n is even } \\
-                          \frac{n+1}{2} \quad \text{, if n is odd }
+   \kappa = \begin{cases}
+              \frac{n}{2}   \quad \text{, if n is even } \\
+              \frac{n+1}{2} \quad \text{, if n is odd  }
 	    \end{cases}
    
 
