@@ -165,7 +165,7 @@ def polarization_integral(x_1, y_1, z_1,  x_exp_i, y_exp_i, z_exp_i, alpha_ii,
                                                                         g_second_term = b_sq/a_u
                                                                         temp_value = coeff_k_nf_x1x2y1y2z1z2_r_gxyz_a * comb(int(s-pol_power_r_half), v) * pow(-a_u/b_sq, v) * gammainc(g_first_term, g_second_term) * gamma(g_first_term)
                                                                         pol_int_value += temp_value
-                                                                        print('Case2a', x_pow, y_pow, z_pow, gx_exp, gy_exp, gz_exp)
+                                                                        #print('Case2a', x_pow, y_pow, z_pow, gx_exp, gy_exp, gz_exp)
 
                                                                 # Case 2, Subcase 2: eq. 39 in Schwerdtfeger's paper
                                                                 # Basically did not get involved in QM-He/MM-He system
@@ -182,43 +182,3 @@ def polarization_integral(x_1, y_1, z_1,  x_exp_i, y_exp_i, z_exp_i, alpha_ii,
 
     return pol_int_value
 
-def unique_integrals(x_1, y_1, z_1,  x_exp_i, y_exp_i, z_exp_i, alpha_ii,
-                          x_2, y_2, z_2,  x_exp_j, y_exp_j, z_exp_j, alpha_jj,
-                          pol_power_r,  pol_power_x, pol_power_y, pol_power_z,
-                          cutoff_alpha, cutoff_power):
-    
-    r_1_sq = pow(x_1, 2) + pow(y_1, 2) + pow(z_1, 2)
-    r_1 = sqrt(r_1_sq)
-    r_2_sq = pow(x_2, 2) + pow(y_2, 2) + pow(z_2, 2)
-    r_2 = sqrt(r_2_sq)
-    
-    b_x1, b_y1, b_z1 = alpha_ii * x_1, alpha_ii * y_1, alpha_ii * z_1
-    b_x2, b_y2, b_z2 = alpha_jj * x_2, alpha_jj * y_2, alpha_jj * z_2
-
-    b_x, b_y, b_z = b_x1 + b_x2, b_y1 + b_y2, b_z1 + b_z2
-    b_sq = pow(b_x, 2)+ pow(b_y, 2) + pow(b_z, 2)
-    b = sqrt(b_sq)
-    d_third_term = -(alpha_ii * r_1_sq + alpha_jj * r_2_sq)
-
-    const_k = 1/gamma(pol_power_r/2) * pow(np.pi, 1.5)
-
-    smax = x_exp_i + x_exp_j + y_exp_i + y_exp_j + z_exp_i + z_exp_j + pol_power_x + pol_power_y + pol_power_z
-    integrals = np.zeros(smax+1)
-    
-    for s in range(0, smax+1):
-        for r_exp in range(cutoff_power + 1):
-            const_r = comb(cutoff_power, r_exp) * pow(-1, r_exp)
-            e_power = cutoff_alpha * r_exp
-            a_u = alpha_ii + alpha_jj + e_power
-
-            if (pol_power_r % 2) == 0:
-                pol_power_r_half = int(pol_power_r / 2)
-                const_b = pow(b, -2 * s + pol_power_r - 3)
-                coeff = const_k * const_r * const_b
-                for v in range(pol_power_r_half):
-                    d_first_term = s - pol_power_r_half + v + 1.5
-                    d_second_term = b_sq / a_u
-                    temp_value = coeff * comb(pol_power_r_half-1, v) * pow(-a_u/b_sq, v) * d_func(d_first_term, d_second_term, d_third_term)
-                    integrals[s] += temp_value
-
-    return integrals

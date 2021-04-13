@@ -47,6 +47,10 @@ External Libraries
 ------------------
  -  Faddeeva package (http://ab-initio.mit.edu/Faddeeva.cc and http://ab-initio.mit.edu/Faddeeva.hh) 
 */
+// uncomment the following line to turn off assertions 
+#undef NDEBUG
+//
+
 #include <cmath>
 #include <cassert>
 #include <iostream>
@@ -67,7 +71,7 @@ void d_func(double x, int p_min, int p_max, double w0, double *d) {
       upper limit of integration
     p_min, p_max : int, p_min <= 0, pmax >= 0
       defines range of values for integer p, p_min <= p <= p_max
-    w0           : double or array with same shape as x
+    w0           : double
       To avoid overflow in the exponential function, exp(-w0) * d(p+1/2,x) is calculated.
     d            : pointer to allocated array of doubles of size |p_min|+p_max+1
       The integrals 
@@ -151,11 +155,11 @@ void d_func_zero_limit(double x, int p_min, int p_max, double w0, double *d) {
 
     Arguments
     ---------
-    x            : double >= 0
+    x            : double
       upper limit of integration
     p_min, p_max : int, p_min <= 0, pmax >= 0
       defines range of values for integer p, p_min <= p <= p_max
-    w0           : double or array with same shape as x
+    w0           : double
       To avoid overflow in the exponential function, exp(-w0) * \tilde{d}(p+1/2,x) is calculated.
     d            : pointer to allocated array of doubles of size |p_min|+p_max+1
       The integrals 
@@ -209,7 +213,139 @@ void d_func_zero_limit(double x, int p_min, int p_max, double w0, double *d) {
 
   // returns nothing, output is in array d  
 }
+
+void g_func(double x, int p_max, double *g) {
+  /*
+    evaluates the integral
+
+                          /x      p-1/2
+        gamma(p+1/2, x) = |  dw  w      exp(-w)
+                          /0
+
+    iteratively for all p=0,1,...,pmax. The closed-form expression for gamma is given in eqn. (33) in [CPP].
+
+    Arguments
+    ----------
+    x    :  double >= 0
+      upper integration limit
+    pmax :  int >= 0
+      integral is evaluated for all integers p=0,1,...,pmax
+    g    :  pointer to first element of doubly array of size pmax+1
+      The integrals gamma(p+1/2,x) are stored in g in the order p=0,1,...,pmax
+  */
+  assert(p_max >= 0);
+  // constants during iteration
+  double sqrtx = sqrt(x);
+  double expmx = exp(-x);
+  /* 
+     The definition of the error function in eqn. (5) [CPP] differs from the usual definition
+     (see https://en.wikipedia.org/wiki/Error_function ):
+
+      - eqn. (5)             erf(x) = integral(exp(-t^2), t=0...z)
+      - standard definition  erf(x) = 2/sqrt(pi) integral(exp(-t^2), t=0...z)
+  */
+  // sqrt(pi)
+  const double SQRT_PI = 2.0/M_2_SQRTPI;
   
+  // initialization p=0
+  g[0] = SQRT_PI * erf(sqrtx);
+
+  // upward iteration starting from p=0
+  int p;
+  // xp = x^(p+1/2) * exp(-x)
+  double xp = sqrtx * expmx;
+  for(p=0; p<p_max; p++) {
+    g[p+1] = -xp + (p+0.5)*g[p];
+    xp *= x;
+  }
+
+  // returns nothing, result is in memory location pointed to by g
+}
+
+
+double m_func(double x) {
+  /*
+    calculates
+
+           /x     t^2 
+    m(x) = | dt  e    erf(t)
+           /0
+
+  For x < 6, m(x) is computed by piecewise Taylor expansions and for x > 6
+  by the approximation m(x) = exp(x^2) erf(x) dawson(x).
+  */
+  // return value
+  double m;
+  if (x >= 6.0) {
+    m = exp(x*x) * Faddeeva::erf(x) * Faddeeva::Dawson(x);
+  } else {
+    // hard-coded values m(xi) and m'(xi) at the expansion points
+    const double x0s[] = { 0., 0.5, 1., 1.5, 2., 2.5, 3., 3.5, 4., 4.5, 5., 5.5 };
+    const double m0s[] = {
+            0.0,
+            0.1536288593561963,
+            0.8153925207417932,
+            3.230822260808236,
+            15.47726567802307,
+            114.4689886643230,
+            1443.356844958733,
+            31266.84178403753,
+            1.149399290121673e6,
+            7.107314602194292e7,
+            7.354153746369724e9,
+            1.269164846178781e12 };
+    const double m1s[] = {
+            0.0,
+            0.6683350724948156,
+            2.290698252303238,
+            9.166150419904208,
+            54.34275435683373,
+            517.8020183042809,
+            8102.904926424203,
+            208981.1335760574,
+            8.886110383508415e6,
+            6.229644420759607e8,
+            7.200489933727517e10,
+            1.372170497746480e13 };
+
+    // select the expansion point i if x0(i) <= x < x0(i+1)
+    int i = (int) (2*x);
+    double x0 = x0s[i];
+
+    // Taylor expansion is truncated after n_max+1 terms
+    const int n_max = 20;
+    double m_deriv[n_max+1];
+    m_deriv[0] = m0s[i];
+    m_deriv[1] = m1s[i];
+    m_deriv[2] = 2*x0*m_deriv[1] + M_2_SQRTPI; // M_2_SQRTPI = 2/sqrt(pi)
+
+    /*
+      compute derivatives of m(x) at the expansion point iteratively
+                    d^k m(x)
+       m_deriv[k] = -------- (x0)
+                     d x^k
+    */
+    int n;
+    for(n=3; n <= n_max; n++) {
+      m_deriv[n] = 2*(n-2)*m_deriv[n-2] + 2*x0*m_deriv[n-1];
+    }
+
+    // evaluate Taylor series
+    double dx = x-x0;
+    // y holds (x-x0)^n / n!
+    double y = dx;   
+    // accumulator
+    m = m_deriv[0];
+    for(n=1; n <= n_max; n++) {
+      m += y * m_deriv[n];
+      y *= dx/(n+1);
+    }
+    
+  }
+  return m;
+}
+
+
 inline int kappa(int n) {
   if (n % 2 == 0) {
     return n/2;
@@ -249,6 +385,7 @@ PolarizationIntegral::PolarizationIntegral(
 
   l_max = li+lj + max(mx, max(my,mz));
 
+  s_min = mx+my+mz;
   s_max = li+lj+mx+my+mz;
   j = k/2;
 
@@ -282,6 +419,11 @@ PolarizationIntegral::PolarizationIntegral(
   double b2, b_pow, b2jm3;
   b2 = b*b;
   b2jm3 = pow(b,2*j-3);
+
+  // Variables for case 2, subcase 1
+  // binom(s-j,nu)
+  double binom_smj_nu;
+  
   /*
     outer loop is
     sum_(mu to q) binomial(q,mu) (-1)^mu
@@ -303,6 +445,9 @@ PolarizationIntegral::PolarizationIntegral(
   // Shift pointer to array element for p=0, so that
   // the indices of d can be positive or negative.
   double *d = (darr-p_min);
+  // d and g are different names for the same memory location.
+  // Depending on which case we are in, the array stores d(p+1/2,x) or g(p+1/2,x).
+  double *g = (darr-p_min);
   
   double test_binom_mu = 0.0;
   double binom_q_mu = 1.0;
@@ -345,10 +490,61 @@ PolarizationIntegral::PolarizationIntegral(
 	  //  B_{n,k+1} = x (n-k)/(k+1) B_{n,k}
 	  binom_jm1_nu *= ((-1) * (j-1-nu))/(nu + 1.0);
 	}
-	assert(abs(test_binom_nu) < 1.0e-10);
+	assert(abs(test_binom_nu - pow(1-1,j-1)) < 1.0e-10);
       } else {
-	// Case 2: k=2*j+1
-	assert(1 == 2 && "not implemented yet!");
+	// Case 2: k=2*j+1 and x < x_small
+	assert(k == 2*j+1);
+	
+	/* 
+	   compute integrals from Taylor expansion for small x
+
+	     \tilde{g}(p+1/2, x) = x^{-p-1/2} gamma(p+1/2,x)
+	                         = \tilde{d}(p+1/2, -x)
+
+	*/
+	d_func_zero_limit(-x, 0, p_max, w0, d);
+	// Now d[p] = \tilde{d}(p+1/2,-x)
+
+	// the factor exp(-w0) is taken care of by d_func_zero_limit()
+	double expx = exp(x);
+	// a_mu^{j-s-1}
+	a_mu_pow = pow(a_mu, j-1);
+
+	for (s=0; s<=s_max; s++) {
+	  if (s < s_min) {
+	    // The integrals for s < s_min are not needed, but we have to start the
+	    // loop from s=0 to get the binomial coefficients right.
+	  } else if (s-j >= 0) {
+	    // Subcase 1: s-j >= 0, eqn. (32)
+	    /*
+	                       q                    mu   j-s-1 
+	      integs[s] = c sum     binom(q,mu) (-1)    a      exp(x)
+	                       mu=0                              
+                                   
+                                    s-j                    nu             
+			         sum     binom(s-j,nu) (-1)    \tilde{d}(j+nu+1/2, -x)
+                                    nu=0
+	    */
+	    test_binom_nu = 0.0;
+	    binom_smj_nu = 1.0;
+	    for(nu=0; nu <= s-j; nu++) {
+	      assert(j+nu <= s_max);
+	      integs[s] += c * binom_q_mu * a_mu_pow * expx * binom_smj_nu * d[j+nu];
+
+	      test_binom_nu += binom_smj_nu;
+	      assert(abs(a_mu_pow - pow(a_mu, j-s-1)) < 1.0e-10);
+	      // update binomial coefficient
+	      binom_smj_nu *= ((-1) * (s-j-nu))/(nu + 1.0);
+	    }
+	    assert(abs(test_binom_nu - pow(1-1,s-j)) < 1.0e-10);
+	  } else {
+	    // Subcase 2: s-j < 0, eqn. (39)
+	    assert(1 == 2 && "Case 2 (k=2*j+1), subcase s-j < 0 not implemented yet");
+	    //integs[s] = c;
+	  }
+
+	  a_mu_pow /= a_mu;
+	} // end loop over s
       }
     } else { // x > x_small
       invx = 1.0/x;
@@ -383,17 +579,51 @@ PolarizationIntegral::PolarizationIntegral(
 	}
 	assert(abs(test_binom_nu - pow(1 - invx, j-1)) < 1.0e-10);
       } else {
-	assert(1 == 2 && "Case 2 (k=2*j+1) not implemented yet");
 	// Case 2: k=2*j+1
+	assert(k == 2*j+1);
+	
+	// compute integrals gamma(p+1/2,x)
+	g_func(x, p_max, g);
+	
+	double powinvx_expx = pow(invx, j+0.5) * exp(x-w0);
+	// a_mu^{j-s-1}
+	a_mu_pow = pow(a_mu, j-1);
+
 	for (s=0; s<=s_max; s++) {
-	  if (s-j >= 0) {
+	  if (s < s_min) {
+	    // The integrals for s < s_min are not needed, but we have to start the
+	    // loop from s=0 to get the binomial coefficients right.
+	  } else if (s-j >= 0) {
 	    // Subcase 1: s-j >= 0, eqn. (32)
-	    integs[s] = c;
+	    /*
+	                       q                    mu   j-s-1  -j-1/2
+	      integs[s] = c sum     binom(q,mu) (-1)    a      x       exp(x - w0)
+	                       mu=0                              
+                                   
+                                    s-j                       nu             
+			         sum     binom(s-j,nu) (- 1/x)    g(j+nu+1/2, x)
+                                    nu=0
+	    */
+	    test_binom_nu = 0.0;
+	    binom_smj_nu = 1.0;
+	    for(nu=0; nu <= s-j; nu++) {
+	      assert(j+nu <= s_max);
+	      integs[s] += c * binom_q_mu * a_mu_pow * powinvx_expx * binom_smj_nu * g[j+nu];
+
+	      test_binom_nu += binom_smj_nu;
+	      assert(abs(a_mu_pow - pow(a_mu, j-s-1)) < 1.0e-10);
+	      // update binomial coefficient
+	      binom_smj_nu *= ((-invx) * (s-j-nu))/(nu + 1.0);
+	    }
+	    assert(abs(test_binom_nu - pow(1-invx, s-j)) < 1.0e-10);
 	  } else {
 	    // Subcase 2: s-j < 0, eqn. (39)
-	    integs[s] = c;
+	    assert(1 == 2 && "Case 2 (k=2*j+1), subcase s-j < 0 not implemented yet");
+	    //integs[s] = c;
 	  }
-	}
+
+	  a_mu_pow /= a_mu;
+	} // end loop over s
       }
     }
     test_binom_mu += binom_q_mu;
@@ -403,7 +633,7 @@ PolarizationIntegral::PolarizationIntegral(
   delete[] darr;
 
   // 0 = (1-1)^q = sum_{mu=0}^q binom(q,mu) (-1)^mu
-  assert(abs(test_binom_mu) < 1.0e-10);
+  assert(abs(test_binom_mu - pow(1-1,q)) < 1.0e-10);
 }
 
 PolarizationIntegral::~PolarizationIntegral() {
@@ -573,4 +803,15 @@ double test_d_func_zero_limit(double x, int p, double w0) {
   delete[] darr;
   
   return dret;
+}
+
+double test_g_func(double x, int p) {
+  int p_max = max(0, p);
+  double *g = new double[p_max+1]();
+  g_func(x, p_max, g);
+
+  double gret = g[p];
+  delete[] g;
+  
+  return gret;
 }

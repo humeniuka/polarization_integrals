@@ -10,7 +10,6 @@ from scipy import special
 from polarization_ints_reference import d_func as d_func_reference
 from polarization_ints_reference import h_func as h_func_reference
 from polarization_ints_reference import polarization_integral as polarization_integral_reference
-from polarization_ints_reference import unique_integrals
 # fast C++ implementation
 from polarization_integrals import PolarizationIntegral
 # 
@@ -53,7 +52,7 @@ def d_func(x, pmin, pmax, w0):
       upper limit of integration
     pmin, pmax : int
       defines range pmin <= p <= pmax
-    w0         : float or array with same shape as x
+    w0         : float
       To avoid overflow in the exponential function, exp(-w0) * d(p+1/2,x) is calculated.
 
     Returns
@@ -247,7 +246,7 @@ def h_func(x, pmin, pmax):
     evaluates the non-diverging part of the integral
 
                /1          -p
-      H(p,x) = | dt (1-x^2)   exp(-x t^2) 
+      H(p,x) = | dt (1-t^2)   exp(-x t^2) 
                /0
 
     according to the recursion relations in  eqns. (37) in [CPP] for p > 0 
@@ -420,6 +419,27 @@ class TestSchwedtfegerSpecialFunctions(unittest.TestCase):
         # compare the two implementations
         self.assertLess(la.norm(g - g_reference), 1.0e-8)
 
+    def test_g_func_cpp(self):
+        print("testing C++ implementation gamma(p+1/2,x)")
+        pmax = 10
+        # random values for testing
+        x = 0.86725
+
+        # gamma(p+1/2,x) can be written in terms of the Gamma function G(a) and the regularized
+        # lower incomplete Gamma function P(a,x):
+        #  gamma(p+1/2,x) = Gamma(p+1/2) P(p+1/2,x)
+        g_reference = np.zeros(pmax+1)
+        g = np.zeros(pmax+1)
+        for p in range(0, pmax+1):
+            g[p] = _polarization.test_g_func(x, p)
+            g_reference[p] = special.gamma(p+0.5) * special.gammainc(p+0.5, x)
+        print("C++ implementation            : ", g)
+        print("reference implementation      : ", g_reference)
+
+        # compare the two implementations
+        self.assertLess(la.norm(g - g_reference), 1.0e-8)
+
+        
     def test_binomial_sums(self):
         """
         check that the iteration
@@ -509,6 +529,38 @@ class TestSchwedtfegerSpecialFunctions(unittest.TestCase):
             plt.savefig("/tmp/dawson-error_hybrid_m-function.png", dpi=300)
             plt.show()
         #plot_m_function()
+
+    def test_m_func_cpp(self):
+        """check C++ implementation of m(x)"""
+        # test points lie half way between expansion points, n/2+1/4
+        xs_reference = np.array([
+            0.25, 0.75, 1.25, 1.75, 2.25, 2.75, 3.25, 3.75, 4.25, 4.75, 5.25,
+            5.75, 6.25, 6.75, 7.25, 7.75, 15.0
+        ])
+        # The exact values of m(x) were computed as a reference
+        # with the Mathematica script Schwerdtfeger_Dawson-error_hybrid_integral.nb
+        ms_reference = np.array([
+            0.03600888034034016, 0.3869800095043523, 1.619108065804630,
+            6.777147720620485, 39.49564425980311, 379.6523082274102,
+            6283.378330244620, 177564.3666528541, 8.472742354715874e6,
+             6.780679537674443e8, 9.064107025088944e10,
+             2.018368353479387e13, 7.472526220585603e15,
+             4.593174392010666e18, 4.682417382497857e21,
+             7.909964003438566e24, 1.738231811666687e96
+        ])
+        # compute m(x) using own C++ implementation
+        ms = np.array([ _polarization.m_func(x) for x in xs_reference ])
+        
+        # compute m(x) using own implementation
+        ms = np.array([ m_func(x) for x in xs_reference ])
+
+        print("Taylor series + asymptotic (C++)        : \n", ms)
+        print("reference implementation (Mathematica)  : \n", ms_reference)
+
+        relative_error = abs(ms-ms_reference)/abs(ms_reference)
+        print("relative error : \n", relative_error)
+        # relative error should be smaller than 10^-10 at all test points
+        self.assertTrue( (relative_error < 1.0e-10).all() )
         
     def test_h_func(self):
         """
@@ -569,6 +621,7 @@ class TestSchwedtfegerSpecialFunctions(unittest.TestCase):
             if k % 2 == 0:
                 self.assertLess( abs( f[k//2] - special.factorial2(k-1)/pow(2,k//2) ), 1.0e-10 )
 
+class TestPolarizationIntegrals(unittest.TestCase):
     def test_polarization_integrals_case_1(self):
         """
         compare polarization integrals for the case `k=2*j` with the reference implementation
@@ -640,7 +693,7 @@ class TestSchwedtfegerSpecialFunctions(unittest.TestCase):
         beta_i = 0.234
         beta_j = 1.255
         # The second center is chosen such that
-        #  b = |beta_i * ri + beta_j * rj| = eps << 1
+        #  b = |beta_i * ri + beta_j * rj| = eps, such that x = b^2 / alpha << 1
         eps = 1.0
         xj,yj,zj = - beta_i/beta_j * np.array([xi,yi,zi]) + eps * 2.0*(np.random.rand(3)-0.5)
         # cutoff function
@@ -684,6 +737,254 @@ class TestSchwedtfegerSpecialFunctions(unittest.TestCase):
                                             absolute_error = abs(pint - pint_reference)
                                             relative_error = abs(pint - pint_reference)/abs(pint_reference)
                                             self.assertTrue( (absolute_error < 1.0e-7) or (relative_error < 1.0e-7) )
+
+    def test_polarization_integrals_case_1_numerical(self):
+        """
+        compare polarization integrals for the case `k=2*j` with the numerical integrals (if available)
+        """
+        try:
+            from polarization_ints_numerical import polarization_integral as polarization_integral_numerical
+        except ImportError as err:
+            print("numerical integrals not available, skip this test")
+            return
+
+        # increase resolution of integration grids
+        from becke import settings
+        settings.radial_grid_factor = 3  # increase number of radial points by factor 3
+        settings.lebedev_order = 23      # angular Lebedev grid of order 23
+
+        
+        # make random numbers reproducible
+        np.random.seed(0)
+
+        # centers of Gaussian orbitals        
+        xi,yi,zi = 2.0 * 2.0*np.array(np.random.rand(3)-0.5)
+        xj,yj,zj = 2.0 * 2.0*np.array(np.random.rand(3)-0.5)
+        # exponents of radial parts of Gaussians
+        beta_i = 0.234
+        beta_j = 1.255
+        # cutoff function
+        alpha = 50.0
+
+        ## Check integrals up to g-functions
+        #l_max = 4
+        # Check integrals up to d-function
+        l_max = 2
+        
+        # enumerate powers of polarization operator
+        for k in [4]:  # [4,6]:
+            for mx in [0,1,2]:
+                for my in [0,1,2]:
+                    for mz in [0,1,2]:
+                        # power of cutoff function
+                        q = max(2, int(kappa(k) - kappa(mx) - kappa(my) + kappa(mz) - 1))
+                        # enumerate angular momenta of basis functions
+                        for li in range(0, l_max+1):
+                            for lj in range(0, l_max+1):
+                                # prepare for integrals between shells with angular momenta li and lj
+                                pol = PolarizationIntegral(xi,yi,zi, li, beta_i,
+                                                           xj,yj,zj, lj, beta_j,
+                                                           k, mx,my,mz,
+                                                           alpha, q)
+                                for nxi,nyi,nzi in partition3(li):
+                                    for nxj,nyj,nzj in partition3(lj):
+                                        label=f"k={k} mx={mx} my={my} mz={mz} , q={q} , nxi={nxi} nyi={nyi} nzi={nzi} , nxj={nxj} nyj={nyj} nzj={nzj}"
+                                        with self.subTest(label=label):
+                                            # fast C++ implementation
+                                            pint = pol.compute_pair(nxi,nyi,nzi,
+                                                                    nxj,nyj,nzj)
+                                            
+                                            # slow numerical integrals
+                                            pint_numerical = polarization_integral_numerical(xi,yi,zi, nxi,nyi,nzi, beta_i,
+                                                                                             xj,yj,zj, nxj,nyj,nzj, beta_j,
+                                                                                             k, mx,my,mz,
+                                                                                             alpha, q)
+
+                                            print(label + f"  integral= {pint:+12.7f}  numerical= {pint_numerical:+12.7f}")
+                                            absolute_error = abs(pint - pint_numerical)
+                                            relative_error = abs(pint - pint_numerical)/abs(pint_numerical)
+                                            # numerical accuracy is quite low
+                                            self.assertTrue( (absolute_error < 1.0e-3) or (relative_error < 1.0e-3) )
+
+    def test_polarization_integrals_case_2a(self):
+        """
+        compare polarization integrals for the case `k=2*j+1` with s-j >= 0 
+        with the reference implementation (case 1, subcase 2)
+        """
+        # make random numbers reproducible
+        np.random.seed(0)
+
+        # centers of Gaussian orbitals        
+        xi,yi,zi = 2.0 * 2.0*np.array(np.random.rand(3)-0.5)
+        xj,yj,zj = 2.0 * 2.0*np.array(np.random.rand(3)-0.5)+1.0
+        # exponents of radial parts of Gaussians
+        beta_i = 0.234
+        beta_j = 1.255
+        # cutoff function
+        alpha = 50.0
+
+        ## Check integrals up to g-functions
+        #l_max = 4
+        # Check integrals up to d-function
+        l_max = 2
+        
+        # enumerate powers of polarization operator
+        for k in [3]:
+            for mx,my,mz in partition3(1):
+                # Since k = 3 and s >= mx+my+mz = 1, we have j = 1 and s-j >= 0
+                # power of cutoff function
+                q = max(2, int(kappa(k) - kappa(mx) - kappa(my) + kappa(mz) - 1))
+                # enumerate angular momenta of basis functions
+                for li in range(0, l_max+1):
+                    for lj in range(0, l_max+1):
+                        # prepare for integrals between shells with angular momenta li and lj
+                        pol = PolarizationIntegral(xi,yi,zi, li, beta_i,
+                                                   xj,yj,zj, lj, beta_j,
+                                                   k, mx,my,mz,
+                                                   alpha, q)
+                        for nxi,nyi,nzi in partition3(li):
+                            for nxj,nyj,nzj in partition3(lj):
+                                label=f"k={k} mx={mx} my={my} mz={mz} , q={q} , nxi={nxi} nyi={nyi} nzi={nzi} , nxj={nxj} nyj={nyj} nzj={nzj}"
+                                with self.subTest(label=label):
+                                    # fast C++ implementation
+                                    pint = pol.compute_pair(nxi,nyi,nzi,
+                                                            nxj,nyj,nzj)
+                                            
+                                    # slow python implementation
+                                    pint_reference = polarization_integral_reference(xi,yi,zi, nxi,nyi,nzi, beta_i,
+                                                                                     xj,yj,zj, nxj,nyj,nzj, beta_j,
+                                                                                     k, mx,my,mz,
+                                                                                     alpha, q)
+                                    print(label + f"  integral= {pint:+12.7f}  reference= {pint_reference:+12.7f}")
+                                    absolute_error = abs(pint - pint_reference)
+                                    relative_error = abs(pint - pint_reference)/abs(pint_reference)
+                                    self.assertTrue( (absolute_error < 1.0e-7) or (relative_error < 1.0e-7) )
+                                    
+    def test_polarization_integrals_case_2a_numerical(self):
+        """
+        compare polarization integrals for the case `k=2*j+1` with s-j >= 0 
+        with the numerical integrals (case 1, subcase 2)
+        """
+        try:
+            from polarization_ints_numerical import polarization_integral as polarization_integral_numerical
+        except ImportError as err:
+            print("numerical integrals not available, skip this test")
+            return
+
+        # increase resolution of integration grids
+        from becke import settings
+        settings.radial_grid_factor = 3  # increase number of radial points by factor 3
+        settings.lebedev_order = 23      # angular Lebedev grid of order 23
+
+
+        # make random numbers reproducible
+        np.random.seed(0)
+
+        # centers of Gaussian orbitals        
+        xi,yi,zi = 2.0 * 2.0*np.array(np.random.rand(3)-0.5)
+        xj,yj,zj = 2.0 * 2.0*np.array(np.random.rand(3)-0.5)+1.0
+        # exponents of radial parts of Gaussians
+        beta_i = 0.234
+        beta_j = 1.255
+        # cutoff function
+        alpha = 50.0
+
+        ## Check integrals up to g-functions
+        #l_max = 4
+        # Check integrals up to d-function
+        l_max = 2
+        
+        # enumerate powers of polarization operator
+        for k in [3]:
+            for mx,my,mz in partition3(1):
+                # Since k = 3 and s >= mx+my+mz = 1, we have j = 1 and s-j >= 0
+                # power of cutoff function
+                q = max(2, int(kappa(k) - kappa(mx) - kappa(my) + kappa(mz) - 1))
+                # enumerate angular momenta of basis functions
+                for li in range(0, l_max+1):
+                    for lj in range(0, l_max+1):
+                        # prepare for integrals between shells with angular momenta li and lj
+                        pol = PolarizationIntegral(xi,yi,zi, li, beta_i,
+                                                   xj,yj,zj, lj, beta_j,
+                                                   k, mx,my,mz,
+                                                   alpha, q)
+                        for nxi,nyi,nzi in partition3(li):
+                            for nxj,nyj,nzj in partition3(lj):
+                                label=f"k={k} mx={mx} my={my} mz={mz} , q={q} , nxi={nxi} nyi={nyi} nzi={nzi} , nxj={nxj} nyj={nyj} nzj={nzj}"
+                                with self.subTest(label=label):
+                                    # fast C++ implementation
+                                    pint = pol.compute_pair(nxi,nyi,nzi,
+                                                            nxj,nyj,nzj)
+                                            
+                                    # slow numerical integrals
+                                    pint_numerical = polarization_integral_numerical(xi,yi,zi, nxi,nyi,nzi, beta_i,
+                                                                                     xj,yj,zj, nxj,nyj,nzj, beta_j,
+                                                                                     k, mx,my,mz,
+                                                                                     alpha, q)
+                                    
+                                    print(label + f"  integral= {pint:+12.7f}  numerical= {pint_numerical:+12.7f}")
+                                    absolute_error = abs(pint - pint_numerical)
+                                    relative_error = abs(pint - pint_numerical)/abs(pint_numerical)
+                                    # numerical accuracy is quite low
+                                    self.assertTrue( (absolute_error < 1.0e-3) or (relative_error < 1.0e-3) )
+
+    def test_polarization_integrals_case_2a_small_b(self):
+        """
+        compare polarization integrals for the case `k=2*j+1` with s-j >= 0 
+        with the reference implementation (case 1, subcase 2) for the limit b -> 0
+        """
+        # make random numbers reproducible
+        np.random.seed(0)
+
+        # First center
+        xi,yi,zi = 2.0 * 2.0*np.array(np.random.rand(3)-0.5)
+        # exponents of radial parts of Gaussians
+        beta_i = 0.234
+        beta_j = 1.255
+        # The second center is chosen such that
+        #  b = |beta_i * ri + beta_j * rj| = eps, such that x = b^2 / alpha << 1
+        eps = 1.0
+        xj,yj,zj = - beta_i/beta_j * np.array([xi,yi,zi]) + eps * 2.0*(np.random.rand(3)-0.5)
+        # cutoff function
+        alpha = 50.0
+
+        ## Check integrals up to g-functions
+        #l_max = 4
+        # Check integrals up to d-function
+        l_max = 2
+        
+        # enumerate powers of polarization operator
+        for k in [3]:
+            for mx,my,mz in partition3(1):
+                # Since k = 3 and s >= mx+my+mz = 1, we have j = 1 and s-j >= 0
+                # power of cutoff function
+                q = max(2, int(kappa(k) - kappa(mx) - kappa(my) + kappa(mz) - 1))
+                # enumerate angular momenta of basis functions
+                for li in range(0, l_max+1):
+                    for lj in range(0, l_max+1):
+                        # prepare for integrals between shells with angular momenta li and lj
+                        pol = PolarizationIntegral(xi,yi,zi, li, beta_i,
+                                                   xj,yj,zj, lj, beta_j,
+                                                   k, mx,my,mz,
+                                                   alpha, q)
+                        for nxi,nyi,nzi in partition3(li):
+                            for nxj,nyj,nzj in partition3(lj):
+                                label=f"k={k} mx={mx} my={my} mz={mz} , q={q} , nxi={nxi} nyi={nyi} nzi={nzi} , nxj={nxj} nyj={nyj} nzj={nzj}"
+                                with self.subTest(label=label):
+                                    # fast C++ implementation
+                                    pint = pol.compute_pair(nxi,nyi,nzi,
+                                                            nxj,nyj,nzj)
+                                            
+                                    # slow python implementation
+                                    pint_reference = polarization_integral_reference(xi,yi,zi, nxi,nyi,nzi, beta_i,
+                                                                                     xj,yj,zj, nxj,nyj,nzj, beta_j,
+                                                                                     k, mx,my,mz,
+                                                                                     alpha, q)
+                                    print(label + f"  integral= {pint:+12.7f}  reference= {pint_reference:+12.7f}")
+                                    absolute_error = abs(pint - pint_reference)
+                                    relative_error = abs(pint - pint_reference)/abs(pint_reference)
+                                    self.assertTrue( (absolute_error < 1.0e-7) or (relative_error < 1.0e-7) )
+
                                             
 if __name__ == '__main__':
     unittest.main()

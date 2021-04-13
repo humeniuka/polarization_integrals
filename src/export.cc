@@ -11,6 +11,8 @@ using namespace pybind11::literals;
 // <for testing only
 extern double test_d_func(double x, int p, double w0);
 extern double test_d_func_zero_limit(double x, int p, double w0);
+extern double test_g_func(double x, int p);
+extern double m_func(double x);
 // >
 
 PYBIND11_MODULE(_polarization, m) {
@@ -134,8 +136,10 @@ where `li` and `lj` are the angular momenta specified when creating the `Polariz
 	 "nxi"_a, "nyi"_a, "nzi"_a,
 	 "nxj"_a, "nyj"_a, "nzj"_a);
   // <only for testing
-  m.def("test_d_func", &test_d_func, "test implementation of d(p+1/2,x)");
-  m.def("test_d_func_zero_limit", &test_d_func_zero_limit, "test implementation of \tilde{d}(p+1/2,x)");
+  m.def("test_d_func", &test_d_func, "export implementation of d(p+1/2,x) for testing");
+  m.def("test_d_func_zero_limit", &test_d_func_zero_limit, "export implementation of \tilde{d}(p+1/2,x) for testing");
+  m.def("test_g_func", &test_g_func, "export implementation of g(p+1/2,x) for testing");
+  m.def("m_func", &m_func, "export implementation of m(x) for testing");
   // >
 }
 

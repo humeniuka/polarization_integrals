@@ -25,8 +25,10 @@ class PolarizationIntegral {
   double bx,by,bz, b;
 
   int l_max;
-  // maximum value of s = lx+ly+lz - (zeta_x+zeta_y+zeta_z)/2
-  int j, s_max;
+  // k = 2*j or 2*j+1
+  int j;
+  // minimum and maximum value of s = lx+ly+lz - (zeta_x+zeta_y+zeta_z)/2
+  int s_min, s_max;
 
   double *integs;
   double *f;
