@@ -284,7 +284,7 @@ def h_func(x, pmin, pmax):
     # H(1,x), eqn. (37c)
     h[1] = 2.0 * np.exp(-x) * m_func(sqrtx)
     """
-
+    
     for p in range(2,pmax+1):
         # compute H(p,x) from H(p-1,x) and H(p-2,x)
         # eqn. (37a)
@@ -311,6 +311,67 @@ def h_func(x, pmin, pmax):
         h[-p] = acc
         
     return h
+
+def h_func_small_x(x, pmin, pmax):
+    """
+    compute H(p,x) for small x or x=0
+    """
+    assert pmin <= 0 and pmax >= 0
+    # output array
+    h = np.zeros(-pmin+pmax+1)
+
+    # 1) upward recursion for positive p
+    # Taylor expansion of H(0,x) around x=0, which is truncated at kmax
+    #
+    #                  kmax    (-2x)^k
+    #  H(0,x) = 1 + sum     -------------
+    #                  k=1  (2k+1) (2k)!!
+    #
+    kmax = 20
+    y = (-2*x)
+    # yk = (-2x)^k / (2k)!!
+    yk = y/2
+    h0 = 1.0
+    for k in range(1, kmax+1):
+        h0 += yk/(2*k+1)
+        assert(abs(yk - pow(-2*x, k)/special.factorial2(2*k)) < 1.0e-10)
+        yk *= y / (2*(k+1))
+        
+    # initial values for upward recursion
+    h[0] = h0
+    
+    # H(1,x), eqn. (37c)
+    sqrtx = np.sqrt(x)
+    h[1] = 1.0/np.sqrt(np.pi) * np.exp(-x) * m_func(sqrtx)
+
+    for p in range(2,pmax+1):
+        # compute H(p,x) from H(p-1,x) and H(p-2,x)
+        # eqn. (37a)
+        h[p] = (2*(p+x)-3)/(2*(p-1)) * h[p-1] - x/(p-1) * h[p-2]
+
+    # 2) for negative p we need \tilde{d}(k+1/2,-x) for k=0,1,...,|pmin|
+    d_tilde = d_func_zero_limit(-x, 0, -pmin, 0.0)
+
+    # For small x we rewrite eqn. (38) as
+    #                   p
+    #  H(-p,x) = 1/2 sum    binom(p,k) (-1)^k \tilde{d}(k+1/2,-x)
+    #                   k=0
+    #
+    for p in range(1,-pmin+1):
+        acc = 0.0
+        # y holds B_{p,k} = binomial(p,k) (-1)^k
+        y = 1.0
+        for k in range(0, p+1):
+            acc += y * d_tilde[k]
+            # B_{p,k+1} = (-1) (p-k)/(k+1) B_{p,k}
+            y *= (-1) * (p-k)/(k+1)
+        acc *= 0.5
+
+        h[-p] = acc
+
+    return h
+    
+    
 
 def partition3(l):
     """
@@ -596,6 +657,73 @@ class TestSchwedtfegerSpecialFunctions(unittest.TestCase):
         # compare the two implementations
         self.assertLess(la.norm(h - h_reference), 1.0e-7)
 
+    def test_h_func_cpp(self):
+        """
+        check C++ implementation of H(p,x) for positive and negative p
+        """
+        print("testing C++ implementation for H(p,x)")
+
+        pmin, pmax = -10, 10
+        # random values for testing, sqrt(x) needs to be larger than 6, since
+        # Xiao's h_func uses
+        #   m(sqrt(x)) = exp(-x) erf(sqrt(x)) dawson(sqrt(x))
+        # which is correct only for sqrt(x) > 6
+        x = 6.5**2
+
+        # use python implementation as reference
+        h_reference = h_func(x, pmin, pmax)
+
+        print("python implementation      : ", h_reference)
+        
+        # compare with C++ implementation
+        h = np.zeros(-pmin+pmax+1)
+        for p in range(pmin, pmax+1):
+            h[p] = _polarization.test_h_func(x, p)
+            
+        print("C++ implementation         : ", h)
+
+        # compare the two implementations
+        self.assertLess(la.norm(h - h_reference), 1.0e-7)
+
+    def test_h_func_small_x(self):
+        """
+        check H(p,x) for x -> 0
+        """
+        pmin, pmax = -10, 10
+        # random value
+        # For x < 1.0, the small x expansion has a much higher accuracy than the h_func.
+        x = 1.9515253
+
+        h_reference = h_func(x, pmin, pmax)
+        h_small_x = h_func_small_x(x, pmin, pmax)
+
+        print("H(x,p) (reference)     = ", h_reference)
+        print("H(x,p) (small x expr.) = ", h_small_x)
+        
+        self.assertLess(la.norm(h_small_x - h_reference), 1.0e-10)
+
+    def test_h_func_small_x_cpp(self):
+        """
+        compary python and C++ implementations for `h_func_small`
+        """
+        pmin, pmax = -10, 10
+        # random value
+        # For x < 1.0, the small x expansion has a much higher accuracy than the h_func.
+        x = 1.9515253
+
+        # 
+        h_reference = h_func_small_x(x, pmin, pmax)
+
+        #
+        h = np.zeros(-pmin+pmax+1)
+        for p in range(pmin, pmax+1):
+            h[p] = _polarization.test_h_func_small_x(x, p)
+
+        print("H(x,p) (python) = ", h_reference)
+        print("H(x,p) (C++)    = ", h)
+        
+        self.assertLess(la.norm(h - h_reference), 1.0e-10)
+        
     def test_factorial2_even(self):
         """
         check that for even k
@@ -985,7 +1113,74 @@ class TestPolarizationIntegrals(unittest.TestCase):
                                     relative_error = abs(pint - pint_reference)/abs(pint_reference)
                                     self.assertTrue( (absolute_error < 1.0e-7) or (relative_error < 1.0e-7) )
 
+    def test_polarization_integrals_case_2b_numerical(self):
+        """
+        compare polarization integrals for the case `k=2*j+1` with s-j < 0 
+        with numerical integrals (case 1, subcase 2)
+        """
+        try:
+            from polarization_ints_numerical import polarization_integral as polarization_integral_numerical
+        except ImportError as err:
+            print("numerical integrals not available, skip this test")
+            return
+
+        # increase resolution of integration grids
+        from becke import settings
+        settings.radial_grid_factor = 3  # increase number of radial points by factor 3
+        settings.lebedev_order = 23      # angular Lebedev grid of order 23
+
+
+        # make random numbers reproducible
+        np.random.seed(0)
+
+        # centers of Gaussian orbitals        
+        xi,yi,zi = 2.0 * 2.0*np.array(np.random.rand(3)-0.5)
+        xj,yj,zj = 2.0 * 2.0*np.array(np.random.rand(3)-0.5)+1.0
+        # exponents of radial parts of Gaussians
+        beta_i = 0.234
+        beta_j = 1.255
+        # cutoff function
+        alpha = 50.0
+
+        ## Check integrals up to g-functions
+        #l_max = 4
+        # Check integrals up to d-function
+        l_max = 2
+        
+        # enumerate powers of polarization operator
+        for k in [5]:
+            for mx,my,mz in partition3(0):
+                # Since k = 3 and s >= mx+my+mz = 1, we have j = 1 and s-j >= 0
+                # power of cutoff function
+                q = max(2, int(kappa(k) - kappa(mx) - kappa(my) + kappa(mz) - 1))
+                # enumerate angular momenta of basis functions
+                for li in range(0, l_max+1):
+                    for lj in range(0, l_max+1):
+                        # prepare for integrals between shells with angular momenta li and lj
+                        pol = PolarizationIntegral(xi,yi,zi, li, beta_i,
+                                                   xj,yj,zj, lj, beta_j,
+                                                   k, mx,my,mz,
+                                                   alpha, q)
+                        for nxi,nyi,nzi in partition3(li):
+                            for nxj,nyj,nzj in partition3(lj):
+                                label=f"k={k} mx={mx} my={my} mz={mz} , q={q} , nxi={nxi} nyi={nyi} nzi={nzi} , nxj={nxj} nyj={nyj} nzj={nzj}"
+                                with self.subTest(label=label):
+                                    # fast C++ implementation
+                                    pint = pol.compute_pair(nxi,nyi,nzi,
+                                                            nxj,nyj,nzj)
                                             
+                                    # slow numerical integrals
+                                    pint_numerical = polarization_integral_numerical(xi,yi,zi, nxi,nyi,nzi, beta_i,
+                                                                                     xj,yj,zj, nxj,nyj,nzj, beta_j,
+                                                                                     k, mx,my,mz,
+                                                                                     alpha, q)
+                                    
+                                    print(label + f"  integral= {pint:+12.7f}  numerical= {pint_numerical:+12.7f}")
+                                    absolute_error = abs(pint - pint_numerical)
+                                    relative_error = abs(pint - pint_numerical)/abs(pint_numerical)
+                                    # numerical accuracy is quite low
+                                    self.assertTrue( (absolute_error < 1.0e-3) or (relative_error < 1.0e-3) )
+                                    
 if __name__ == '__main__':
     unittest.main()
 

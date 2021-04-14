@@ -166,7 +166,7 @@ void d_func_zero_limit(double x, int p_min, int p_max, double w0, double *d) {
         d[p] = exp(-w0) * \tilde{d}(p+1/2,x) 
       are stored in this output array. The memory has to be allocated and
       released by the caller. 
-      `d` should point to the pmin-th element of the array, so that the elements
+      `d` should point to the p_min-th element of the array, so that the elements
       p=p_min,p_min+1,...,-1,0,1,...,p_max can be accessed as d[p]
 
    */
@@ -196,7 +196,7 @@ void d_func_zero_limit(double x, int p_min, int p_max, double w0, double *d) {
     for(p=0; p <= p_max; p++) {
       d[p] += y/(p+k+0.5);
     }
-    y *= x/(k+1);
+    y *= x/(k+1.0);
   }
 
   /*
@@ -345,6 +345,165 @@ double m_func(double x) {
   return m;
 }
 
+void h_func_large_x(double x, int p_min, int p_max, double *work, double *h) {
+  /*
+    compute H(p,x) for small x
+
+    Arguments are the same as for `h_func(...)`.
+  */
+  assert((p_min <= 0) && (p_max >= 0));
+  int p, k;
+  double acc, y;
+  
+  // 1) upward recursion for positive p
+  double sqrtx = sqrt(x);
+  // initial values for upward recursion:
+  //   H(0,x) in eqn. (37b)
+  h[0] = (1.0/sqrtx) * Faddeeva::erf(sqrtx) / M_2_SQRTPI;
+  if (p_max > 0) {
+    //   H(1,x) in eqn. (37c)
+    h[1] = 0.5 * M_2_SQRTPI * exp(-x) * m_func(sqrtx);
+  }
+  for(p=2; p <= p_max; p++) {
+    // compute H(p,x) from H(p-1,x) and H(p-2,x)
+    // eqn. (37a)
+    h[p] = (2*(p+x)-3)/(2*(p-1)) * h[p-1] - x/(p-1) * h[p-2];
+  }
+  
+  // 2) For negative p we need gamma(k+1/2,x) for k=0,1,...,|p_min|
+  double *g = work;
+  // compute gamma integrals
+  g_func(x, -p_min, g);
+
+  /*
+    eqn. (38)
+                                                             k 
+     H(-p,x) = 1/(2 sqrt(x)) sum(k to p) binomial(p,k) (-1/x)   gamma(k+1/2,x)
+             = 1/(2 sqrt(x)) sum(k to p) B_{p,k} g[k]
+  */
+  double invmx = -1/x;
+  for(p=1; p <= -p_min; p++) {
+    acc = 0.0;
+    // y holds B_{p,k} = binomial(p,k) (-1/x)^k
+    y = 1.0;
+    for(k=0; k <= p; k++) {
+      acc += y * g[k];
+      // B_{p,k+1} = (-1/x) (p-k)/(k+1) B_{p,k}
+      y *= invmx * (p-k)/(k+1.0);
+    }
+    acc *= 1.0/(2*sqrtx);
+
+    h[-p] = acc;
+  }
+  // returns nothing, results are in output array h
+}
+
+void h_func_small_x(double x, int p_min, int p_max, double *work, double *h) {
+  /*
+    compute H(p,x) for small x
+
+    Arguments are the same as for `h_func(...)`.
+  */
+  assert((p_min <= 0) && (p_max >= 0));
+  /*
+    1) upward recursion for positive p
+    Taylor expansion of H(0,x) around x=0, which is truncated at kmax
+    
+                      kmax    (-2x)^k
+      H(0,x) = 1 + sum     -------------
+                      k=1  (2k+1) (2k)!!
+  */
+  int k, p;
+  const int k_max = 20;
+  double y, yk, h0;
+  y = (-2*x);
+  // yk = (-2x)^k / (2k)!!
+  yk = y/2;
+  h0 = 1.0;
+  for(k=1; k<=k_max; k++) {
+    h0 += yk/(2*k+1);
+    yk *= y / (2*(k+1));
+  }        
+  // initial values for upward recursion
+  h[0] = h0;
+
+  // H(1,x), eqn. (37c)
+  double sqrtx;
+  if (p_max > 0) {
+    sqrtx = sqrt(x);
+    //   H(1,x) in eqn. (37c)
+    h[1] = 0.5 * M_2_SQRTPI * exp(-x) * m_func(sqrtx);
+  }
+  for(p=2; p <= p_max; p++) {
+    // compute H(p,x) from H(p-1,x) and H(p-2,x)
+    // eqn. (37a)
+    h[p] = (2*(p+x)-3)/(2*(p-1)) * h[p-1] - x/(p-1) * h[p-2];
+  }
+  
+  // 2) for negative p we need \tilde{d}(k+1/2,-x) for k=0,1,...,|pmin|
+  double *d_tilde = work;
+  d_func_zero_limit(-x, 0, -p_min, 0.0, d_tilde);
+  /*
+    For small x we rewrite eqn. (38) as
+                      p
+     H(-p,x) = 1/2 sum    binom(p,k) (-1)^k \tilde{d}(k+1/2,-x)
+                      k=0
+  */
+  double acc;
+  for(p=1; p <= -p_min; p++) {
+    acc = 0.0;
+    // y holds B_{p,k} = binomial(p,k) (-1)^k
+    y = 1.0;
+    for(k=0; k <= p; k++) {
+      acc += y * d_tilde[k];
+      // B_{p,k+1} = (-1) (p-k)/(k+1) B_{p,k}
+      y *= (-1) * (p-k)/(k+1.0);
+    }
+    acc *= 0.5;
+    h[-p] = acc;
+  }
+  // returns nothing, output is in array h
+}
+
+void h_func(double x, int p_min, int p_max, double *work, double *h) {
+  /*
+    evaluates the non-diverging part of the integral
+
+               /1          -p
+      H(p,x) = | dt (1-t^2)   exp(-x t^2) 
+               /0
+
+    according to the recursion relations in  eqns. (37) in [CPP] for p > 0 
+    and eqn. (38) in [CPP] for p < 0 for all integers p in the range [pmin, pmax]
+
+    Arguments
+    ---------
+    x       :   float > 0
+      second argument
+    p_min    :   int <= 0
+      lower limit for p
+    p_max    :   int >= 0
+      upper limit for p
+    work     : pointer to allocated array of doubles of size |p_min|+p_max+1
+      temporary work space
+      `work` should point to first element of the array.
+    h        : pointer to allocated array of doubles of size |p_min|+p_max+1
+      The integrals 
+        h[p] = H(p,x)
+      are stored in this output array. The memory has to be allocated and
+      released by the caller. 
+      `h` should point to the p_min-th element of the array, so that the elements
+      p=p_min,p_min+1,...,-1,0,1,...,p_max can be accessed as h[p]
+  */
+  assert(x >= 0.0);
+  // threshold for switching between two algorithms
+  const double x_small = 1.5;
+  if (x < x_small) {
+    h_func_small_x(x, p_min, p_max, work, h);
+  } else {
+    h_func_large_x(x, p_min, p_max, work, h);
+  }
+}
 
 inline int kappa(int n) {
   if (n % 2 == 0) {
@@ -432,8 +591,8 @@ PolarizationIntegral::PolarizationIntegral(
   double a_mu, x, invx;
   double a_mu_jm32, a_mu_pow; 
   
-  double test_binom_nu = 0.0;
-  double binom_jm1_nu = 1.0;
+  double test_binom_nu;
+  double binom_jm1_nu, binom_j_nu;
   int nu;
 
   // threshold for switching to implementation for small x = b^2/a_mu
@@ -443,11 +602,20 @@ PolarizationIntegral::PolarizationIntegral(
   p_max = s_max;
   double *darr = new double[-p_min+p_max+1]();
   // Shift pointer to array element for p=0, so that
-  // the indices of d can be positive or negative.
+  // the indices of d can be both positive or negative.
   double *d = (darr-p_min);
   // d and g are different names for the same memory location.
   // Depending on which case we are in, the array stores d(p+1/2,x) or g(p+1/2,x).
   double *g = (darr-p_min);
+
+  double *harr = new double[s_max+j+1]();
+  // h[p] has elements at positions p=-s_max,...,j.
+  // Shift pointer to array element for p=0, so that
+  // the indices of d can be both positive or negative.
+  double *h = (harr-(-s_max));
+
+  // temporary work space
+  double *work = new double[max(-p_min+p_max+1,s_max+j+1)];
   
   double test_binom_mu = 0.0;
   double binom_q_mu = 1.0;
@@ -581,11 +749,17 @@ PolarizationIntegral::PolarizationIntegral(
       } else {
 	// Case 2: k=2*j+1
 	assert(k == 2*j+1);
-	
-	// compute integrals gamma(p+1/2,x)
-	g_func(x, p_max, g);
-	
-	double powinvx_expx = pow(invx, j+0.5) * exp(x-w0);
+
+	if (s_max-j >= 0) {
+	  // compute integrals gamma(p+1/2,x)
+	  g_func(x, p_max, g);
+	}
+	if (s_min-j < 0) {
+	  // compute integrals H(p,x)
+	  h_func(x, -s_max, j, work, h);
+	}
+	double expx = exp(x-w0);
+	double powinvx_expx = pow(invx, j+0.5) * expx;
 	// a_mu^{j-s-1}
 	a_mu_pow = pow(a_mu, j-1);
 
@@ -594,6 +768,7 @@ PolarizationIntegral::PolarizationIntegral(
 	    // The integrals for s < s_min are not needed, but we have to start the
 	    // loop from s=0 to get the binomial coefficients right.
 	  } else if (s-j >= 0) {
+	    cout << "Case 2a" << endl;
 	    // Subcase 1: s-j >= 0, eqn. (32)
 	    /*
 	                       q                    mu   j-s-1  -j-1/2
@@ -617,11 +792,34 @@ PolarizationIntegral::PolarizationIntegral(
 	    }
 	    assert(abs(test_binom_nu - pow(1-invx, s-j)) < 1.0e-10);
 	  } else {
+	    assert(s-j < 0);
+	    assert(q >= j-s); 
+	    cout << "Case 2b" << endl;
 	    // Subcase 2: s-j < 0, eqn. (39)
-	    assert(1 == 2 && "Case 2 (k=2*j+1), subcase s-j < 0 not implemented yet");
-	    //integs[s] = c;
-	  }
+	    /*
+	                         q                    m   j-s-1
+	      integs[s] = 2 c sum     binom(q,mu) (-1)   a       exp(x - w0)
+	                         mu=0
 
+                                     j                    nu
+				  sum     binom(j,nu) (-1)   H(j-s-nu, x)
+				     nu=0
+	    */
+	    test_binom_nu = 0.0;
+	    binom_j_nu = 1.0;
+	    for(nu=0; nu <= j; nu++) {
+	      assert((-s_max <= j-s-nu) && (j-s-nu <= j));
+
+	      cout << "h[" << j-s-nu << "]= " << h[j-s-nu] << endl;
+	      integs[s] += 2 * c * binom_q_mu * a_mu_pow * expx * binom_j_nu * h[j-s-nu];
+	      
+	      test_binom_nu += binom_j_nu;
+	      assert(abs(a_mu_pow - pow(a_mu, j-s-1)) < 1.0e-10);
+	      // update binomial coefficient
+	      binom_j_nu *= ((-1) * (j-nu))/(nu + 1.0);
+	    }
+	    assert(abs(test_binom_nu - pow(1-1, j)) < 1.0e-10);
+	  }
 	  a_mu_pow /= a_mu;
 	} // end loop over s
       }
@@ -630,10 +828,19 @@ PolarizationIntegral::PolarizationIntegral(
     // update binomial coefficient
     binom_q_mu *= ((-1)*(q-mu))/(mu + 1.0);
   } // end of loop over mu
+
+  // release memory
   delete[] darr;
+  delete[] harr;
+  delete[] work;
 
   // 0 = (1-1)^q = sum_{mu=0}^q binom(q,mu) (-1)^mu
   assert(abs(test_binom_mu - pow(1-1,q)) < 1.0e-10);
+
+  // DEBUG
+  for(s=0; s <= s_max; s++) {
+    cout << "integs[" << s << "]= " << integs[s] << endl;
+  }
 }
 
 PolarizationIntegral::~PolarizationIntegral() {
@@ -814,4 +1021,79 @@ double test_g_func(double x, int p) {
   delete[] g;
   
   return gret;
+}
+
+double test_h_func(double x, int p) {
+  /*
+    compute H(p,x) for large x
+   */
+  int p_min, p_max;
+  double hret; 
+  p_min = min(0, p);
+  p_max = max(0, p);
+  // output array
+  double *harr = new double[-p_min+p_max+1]();
+  // shift pointer to p=0 element
+  double *h = (harr-p_min);
+  // temporary work space
+  double *work = new double[-p_min+p_max+1];
+  
+  h_func(x, p_min, p_max, work, h);
+  
+  hret = h[p];
+
+  delete[] harr;
+  delete[] work;
+  
+  return hret;
+}
+
+double test_h_func_large_x(double x, int p) {
+  /*
+    compute H(p,x) for large x
+   */
+  int p_min, p_max;
+  double hret; 
+  p_min = min(0, p);
+  p_max = max(0, p);
+  // output array
+  double *harr = new double[-p_min+p_max+1]();
+  // shift pointer to p=0 element
+  double *h = (harr-p_min);
+  // temporary work space
+  double *work = new double[-p_min+p_max+1];
+  
+  h_func_large_x(x, p_min, p_max, work, h);
+  
+  hret = h[p];
+
+  delete[] harr;
+  delete[] work;
+  
+  return hret;
+}
+
+double test_h_func_small_x(double x, int p) {
+  /*
+    compute H(p,x) for small x
+   */
+  int p_min, p_max;
+  double hret; 
+  p_min = min(0, p);
+  p_max = max(0, p);
+  // output array
+  double *harr = new double[-p_min+p_max+1]();
+  // shift pointer to p=0 element
+  double *h = (harr-p_min);
+  // temporary work space
+  double *work = new double[-p_min+p_max+1];
+  
+  h_func_small_x(x, p_min, p_max, work, h);
+  
+  hret = h[p];
+
+  delete[] harr;
+  delete[] work;
+  
+  return hret;
 }

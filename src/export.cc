@@ -13,6 +13,9 @@ extern double test_d_func(double x, int p, double w0);
 extern double test_d_func_zero_limit(double x, int p, double w0);
 extern double test_g_func(double x, int p);
 extern double m_func(double x);
+extern double test_h_func(double x, int p);
+extern double test_h_func_large_x(double x, int p);
+extern double test_h_func_small_x(double x, int p);
 // >
 
 PYBIND11_MODULE(_polarization, m) {
@@ -140,6 +143,9 @@ where `li` and `lj` are the angular momenta specified when creating the `Polariz
   m.def("test_d_func_zero_limit", &test_d_func_zero_limit, "export implementation of \tilde{d}(p+1/2,x) for testing");
   m.def("test_g_func", &test_g_func, "export implementation of g(p+1/2,x) for testing");
   m.def("m_func", &m_func, "export implementation of m(x) for testing");
+  m.def("test_h_func", &test_h_func, "export implementation of H(p,x) for testing");
+  m.def("test_h_func_large_x", &test_h_func_large_x, "export implementation of H(p,x) (for large x) for testing");
+  m.def("test_h_func_small_x", &test_h_func_small_x, "export implementation of H(p,x) (for small x) for testing");
   // >
 }
 
