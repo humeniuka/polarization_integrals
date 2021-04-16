@@ -276,7 +276,7 @@ def h_func(x, pmin, pmax):
     sqrtx = np.sqrt(x)
     h[0] = 0.5 * np.sqrt(np.pi)/sqrtx * special.erf(sqrtx)
     # H(1,x), eqn. (37c)
-    h[1] = 1.0/np.sqrt(np.pi) * np.exp(-x) * m_func(sqrtx)
+    h[1] = np.sqrt(np.pi) * np.exp(-x) * m_func(sqrtx)
     """
     # I think the following is wrong because of the missing factors sqrt(pi)/2,
     # but with these definitions for H(0,x) and H(1,x) I get the same result as Xiao for p > 0.
@@ -342,7 +342,7 @@ def h_func_small_x(x, pmin, pmax):
     
     # H(1,x), eqn. (37c)
     sqrtx = np.sqrt(x)
-    h[1] = 1.0/np.sqrt(np.pi) * np.exp(-x) * m_func(sqrtx)
+    h[1] = np.sqrt(np.pi) * np.exp(-x) * m_func(sqrtx)
 
     for p in range(2,pmax+1):
         # compute H(p,x) from H(p-1,x) and H(p-2,x)
@@ -657,6 +657,26 @@ class TestSchwedtfegerSpecialFunctions(unittest.TestCase):
         # compare the two implementations
         self.assertLess(la.norm(h - h_reference), 1.0e-7)
 
+    def test_h_func_numerical(self):
+        """
+        compare analytical implementation of
+ 
+                   /1          p
+         H(-p,x) = | dt (1-t^2)  exp(-x t^2) 
+                   /0
+        
+        with numerical integrals obtained using Mathematica
+        """
+        p = -2
+        x = 2.253
+
+        h = h_func(x, p, 0)[p]
+
+        # got this with Mathematica
+        h_numerical = 0.409357
+        
+        self.assertLess(abs(h - h_numerical), 1.0e-6)
+        
     def test_h_func_cpp(self):
         """
         check C++ implementation of H(p,x) for positive and negative p
@@ -1135,7 +1155,7 @@ class TestPolarizationIntegrals(unittest.TestCase):
 
         # centers of Gaussian orbitals        
         xi,yi,zi = 2.0 * 2.0*np.array(np.random.rand(3)-0.5)
-        xj,yj,zj = 2.0 * 2.0*np.array(np.random.rand(3)-0.5)+1.0
+        xj,yj,zj = 2.0 * 2.0*np.array(np.random.rand(3)-0.5)+3.0
         # exponents of radial parts of Gaussians
         beta_i = 0.234
         beta_j = 1.255
@@ -1148,7 +1168,7 @@ class TestPolarizationIntegrals(unittest.TestCase):
         l_max = 2
         
         # enumerate powers of polarization operator
-        for k in [5]:
+        for k in [3]:
             for mx,my,mz in partition3(0):
                 # Since k = 3 and s >= mx+my+mz = 1, we have j = 1 and s-j >= 0
                 # power of cutoff function
@@ -1175,12 +1195,71 @@ class TestPolarizationIntegrals(unittest.TestCase):
                                                                                      k, mx,my,mz,
                                                                                      alpha, q)
                                     
-                                    print(label + f"  integral= {pint:+12.7f}  numerical= {pint_numerical:+12.7f}")
+                                    # slow python implementation
+                                    pint_reference = polarization_integral_reference(xi,yi,zi, nxi,nyi,nzi, beta_i,
+                                                                                     xj,yj,zj, nxj,nyj,nzj, beta_j,
+                                                                                     k, mx,my,mz,
+                                                                                     alpha, q)
+
+                                    print(label + f"  integral= {pint:+12.7f}  numerical= {pint_numerical:+12.7f}  reference= {pint_reference:+12.7f}")
                                     absolute_error = abs(pint - pint_numerical)
                                     relative_error = abs(pint - pint_numerical)/abs(pint_numerical)
                                     # numerical accuracy is quite low
                                     self.assertTrue( (absolute_error < 1.0e-3) or (relative_error < 1.0e-3) )
-                                    
+    """
+    def test_000_integral(self):
+        try:
+            from polarization_ints_numerical import polarization_integral as polarization_integral_numerical
+        except ImportError as err:
+            print("numerical integrals not available, skip this test")
+            return
+
+        # increase resolution of integration grids
+        from becke import settings
+        settings.radial_grid_factor = 3  # increase number of radial points by factor 3
+        settings.lebedev_order = 23      # angular Lebedev grid of order 23
+
+        k = 3
+        mx,my,mz = 0,0,0
+        q = 2
+        alpha = 1.0
+        # two s-orbitals with exponent 1.0 at the origin
+        xi,yi,zi = 0.0,0.0,0.00001
+        nxi,nyi,nzi = 1,0,1
+        beta_i = 2.0
+
+        xj,yj,zj = 0.0,0.0001,0.0
+        nxj,nyj,nzj = 1,0,1
+        beta_j = 1.0
+
+        li,lj = 0,0
+
+        pint_numerical = polarization_integral_numerical(xi,yi,zi, nxi,nyi,nzi, beta_i,
+                                                         xj,yj,zj, nxj,nyj,nzj, beta_j,
+                                                         k, mx,my,mz,
+                                                         alpha, q)
+        print(pint_numerical)
+
+        pint_reference = polarization_integral_reference(xi,yi,zi, nxi,nyi,nzi, beta_i,
+                                                         xj,yj,zj, nxj,nyj,nzj, beta_j,
+                                                         k, mx,my,mz,
+                                                         alpha, q)
+        
+        print(pint_reference)
+
+        # prepare for integrals between shells with angular momenta li and lj
+        pol = PolarizationIntegral(xi,yi,zi, li, beta_i,
+                                   xj,yj,zj, lj, beta_j,
+                                   k, mx,my,mz,
+                                   alpha, q)
+
+        # fast C++ implementation
+        pint = pol.compute_pair(nxi,nyi,nzi,
+                                nxj,nyj,nzj)
+
+        print(pint)
+    """
+    
 if __name__ == '__main__':
     unittest.main()
 

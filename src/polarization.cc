@@ -345,7 +345,7 @@ double m_func(double x) {
   return m;
 }
 
-void h_func_large_x(double x, int p_min, int p_max, double *work, double *h) {
+void h_func_large_x(double x, int p_min, int p_max, double h1_add, double *work, double *h) {
   /*
     compute H(p,x) for small x
 
@@ -357,12 +357,13 @@ void h_func_large_x(double x, int p_min, int p_max, double *work, double *h) {
   
   // 1) upward recursion for positive p
   double sqrtx = sqrt(x);
+  double expmx = exp(-x);
   // initial values for upward recursion:
   //   H(0,x) in eqn. (37b)
   h[0] = (1.0/sqrtx) * Faddeeva::erf(sqrtx) / M_2_SQRTPI;
   if (p_max > 0) {
-    //   H(1,x) in eqn. (37c)
-    h[1] = 0.5 * M_2_SQRTPI * exp(-x) * m_func(sqrtx);
+    //   H(1,x) in eqn. (37c) with correction `h1_add * exp(-x) = -1/2 log(a_mu) exp(-x)`
+    h[1] = 2.0 / M_2_SQRTPI * expmx * m_func(sqrtx)  +  h1_add * expmx;
   }
   for(p=2; p <= p_max; p++) {
     // compute H(p,x) from H(p-1,x) and H(p-2,x)
@@ -398,7 +399,7 @@ void h_func_large_x(double x, int p_min, int p_max, double *work, double *h) {
   // returns nothing, results are in output array h
 }
 
-void h_func_small_x(double x, int p_min, int p_max, double *work, double *h) {
+void h_func_small_x(double x, int p_min, int p_max, double h1_add, double *work, double *h) {
   /*
     compute H(p,x) for small x
 
@@ -428,11 +429,12 @@ void h_func_small_x(double x, int p_min, int p_max, double *work, double *h) {
   h[0] = h0;
 
   // H(1,x), eqn. (37c)
-  double sqrtx;
+  double sqrtx, expmx;
   if (p_max > 0) {
     sqrtx = sqrt(x);
-    //   H(1,x) in eqn. (37c)
-    h[1] = 0.5 * M_2_SQRTPI * exp(-x) * m_func(sqrtx);
+    expmx = exp(-x);
+    //   H(1,x) in eqn. (37c) with correction `h1_add * exp(-x) = -1/2 log(a_mu) exp(-x)`
+    h[1] = 2.0 / M_2_SQRTPI * expmx * m_func(sqrtx)  +  h1_add * expmx;
   }
   for(p=2; p <= p_max; p++) {
     // compute H(p,x) from H(p-1,x) and H(p-2,x)
@@ -465,7 +467,7 @@ void h_func_small_x(double x, int p_min, int p_max, double *work, double *h) {
   // returns nothing, output is in array h
 }
 
-void h_func(double x, int p_min, int p_max, double *work, double *h) {
+void h_func(double x, int p_min, int p_max, double h1_add, double *work, double *h) {
   /*
     evaluates the non-diverging part of the integral
 
@@ -476,14 +478,40 @@ void h_func(double x, int p_min, int p_max, double *work, double *h) {
     according to the recursion relations in  eqns. (37) in [CPP] for p > 0 
     and eqn. (38) in [CPP] for p < 0 for all integers p in the range [pmin, pmax]
 
+  ERRATUM:
+    There is a mistake in eqn. (48) in [CPP], since `epsilon` is not independent of a_mu. 
+    The correct limit is 
+
+                   q                    mu     -1                       
+         lim    sum     binom(q,mu) (-1)   tanh  (sqrt( eta/(a_mu+eta) ))
+       eta->inf    mu=0
+    
+                    q                  mu
+         = -1/2  sum   binom(q,mu) (-1)   log(a_u)
+                    mu
+
+    This error affects eqn. (37), the definition of H(1,x) has to be modified to
+
+      H(1,x) =  exp(-x) {  sqrt(pi) m(sqrt(x))  - 1/2 * log(a_mu) }
+      
+   where 
+
+      a_mu = beta_i + beta_j + mu*alpha.
+
+   The correction term `h1_add = -1/2 log(a_mu)` can be passed into the function as the 4th argument.
+
+
     Arguments
     ---------
-    x       :   float > 0
+    x       :   double > 0
       second argument
-    p_min    :   int <= 0
+    p_min    :  int <= 0
       lower limit for p
-    p_max    :   int >= 0
+    p_max    :  int >= 0
       upper limit for p
+    h1_add   :  double
+      `h1_add=-1/2 log(a_mu)` is multiplied by exp(-x) and is added to H(1,x) 
+      in order to correct a mistake in eqn. (37) in [CPP]
     work     : pointer to allocated array of doubles of size |p_min|+p_max+1
       temporary work space
       `work` should point to first element of the array.
@@ -499,9 +527,9 @@ void h_func(double x, int p_min, int p_max, double *work, double *h) {
   // threshold for switching between two algorithms
   const double x_small = 1.5;
   if (x < x_small) {
-    h_func_small_x(x, p_min, p_max, work, h);
+    h_func_small_x(x, p_min, p_max, h1_add, work, h);
   } else {
-    h_func_large_x(x, p_min, p_max, work, h);
+    h_func_large_x(x, p_min, p_max, h1_add, work, h);
   }
 }
 
@@ -595,6 +623,9 @@ PolarizationIntegral::PolarizationIntegral(
   double binom_jm1_nu, binom_j_nu;
   int nu;
 
+  // h1_add = -1/2 log(a_mu)
+  double h1_add;
+  
   // threshold for switching to implementation for small x = b^2/a_mu
   const double x_small = 1.0e-2;
   
@@ -707,6 +738,7 @@ PolarizationIntegral::PolarizationIntegral(
 	    assert(abs(test_binom_nu - pow(1-1,s-j)) < 1.0e-10);
 	  } else {
 	    // Subcase 2: s-j < 0, eqn. (39)
+	    cout << "j= " << j << " s-j= " << s-j << endl;
 	    assert(1 == 2 && "Case 2 (k=2*j+1), subcase s-j < 0 not implemented yet");
 	    //integs[s] = c;
 	  }
@@ -755,8 +787,9 @@ PolarizationIntegral::PolarizationIntegral(
 	  g_func(x, p_max, g);
 	}
 	if (s_min-j < 0) {
+	  h1_add = -0.5 * log(a_mu);
 	  // compute integrals H(p,x)
-	  h_func(x, -s_max, j, work, h);
+	  h_func(x, -s_max, j, h1_add, work, h);
 	}
 	double expx = exp(x-w0);
 	double powinvx_expx = pow(invx, j+0.5) * expx;
@@ -768,7 +801,7 @@ PolarizationIntegral::PolarizationIntegral(
 	    // The integrals for s < s_min are not needed, but we have to start the
 	    // loop from s=0 to get the binomial coefficients right.
 	  } else if (s-j >= 0) {
-	    cout << "Case 2a" << endl;
+	    //cout << "Case 2a" << endl;
 	    // Subcase 1: s-j >= 0, eqn. (32)
 	    /*
 	                       q                    mu   j-s-1  -j-1/2
@@ -794,10 +827,10 @@ PolarizationIntegral::PolarizationIntegral(
 	  } else {
 	    assert(s-j < 0);
 	    assert(q >= j-s); 
-	    cout << "Case 2b" << endl;
+	    //cout << "Case 2b" << endl;
 	    // Subcase 2: s-j < 0, eqn. (39)
 	    /*
-	                         q                    m   j-s-1
+	                         q                    mu  j-s-1
 	      integs[s] = 2 c sum     binom(q,mu) (-1)   a       exp(x - w0)
 	                         mu=0
 
@@ -810,7 +843,6 @@ PolarizationIntegral::PolarizationIntegral(
 	    for(nu=0; nu <= j; nu++) {
 	      assert((-s_max <= j-s-nu) && (j-s-nu <= j));
 
-	      cout << "h[" << j-s-nu << "]= " << h[j-s-nu] << endl;
 	      integs[s] += 2 * c * binom_q_mu * a_mu_pow * expx * binom_j_nu * h[j-s-nu];
 	      
 	      test_binom_nu += binom_j_nu;
@@ -836,11 +868,6 @@ PolarizationIntegral::PolarizationIntegral(
 
   // 0 = (1-1)^q = sum_{mu=0}^q binom(q,mu) (-1)^mu
   assert(abs(test_binom_mu - pow(1-1,q)) < 1.0e-10);
-
-  // DEBUG
-  for(s=0; s <= s_max; s++) {
-    cout << "integs[" << s << "]= " << integs[s] << endl;
-  }
 }
 
 PolarizationIntegral::~PolarizationIntegral() {
@@ -1038,7 +1065,7 @@ double test_h_func(double x, int p) {
   // temporary work space
   double *work = new double[-p_min+p_max+1];
   
-  h_func(x, p_min, p_max, work, h);
+  h_func(x, p_min, p_max, 0.0, work, h);
   
   hret = h[p];
 
@@ -1063,7 +1090,7 @@ double test_h_func_large_x(double x, int p) {
   // temporary work space
   double *work = new double[-p_min+p_max+1];
   
-  h_func_large_x(x, p_min, p_max, work, h);
+  h_func_large_x(x, p_min, p_max, 0.0, work, h);
   
   hret = h[p];
 
@@ -1088,7 +1115,7 @@ double test_h_func_small_x(double x, int p) {
   // temporary work space
   double *work = new double[-p_min+p_max+1];
   
-  h_func_small_x(x, p_min, p_max, work, h);
+  h_func_small_x(x, p_min, p_max, 0.0, work, h);
   
   hret = h[p];
 

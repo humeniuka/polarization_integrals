@@ -43,7 +43,7 @@ def m_func(m_para):
     m_value = exp(m_para*m_para) * erf(m_para) * dawsn(m_para)
     return m_value
 
-def h_func(h_first_term, h_second_term):
+def h_func(h_first_term, h_second_term, a_u=1.0):
     if h_first_term == 0:
         #h_value = pow(h_second_term, -0.5) * erf(sqrt(h_second_term))
         # Because the error function in Schwerdtfeger's paper differs from the usual definition
@@ -51,11 +51,23 @@ def h_func(h_first_term, h_second_term):
         h_value = sqrt(pi)/2.0 * pow(h_second_term, -0.5) * erf(sqrt(h_second_term))
         return h_value
     elif h_first_term == 1:
-        #h_value = 2 * exp(-h_second_term) * m_func(sqrt(h_second_term))
-        h_value = 1.0/sqrt(pi) * exp(-h_second_term) * m_func(sqrt(h_second_term))
+        h_value = sqrt(pi) * exp(-h_second_term) * m_func(sqrt(h_second_term))
+        
+        # There is a mistake in eqn. (48) in Schwerdtfeger's article
+        # The limit does not vanish, in fact it is
+        #
+        #               q                    mu     -1                       
+        #     lim    sum     binom(q,mu) (-1)   tanh  (sqrt( eta/(a_mu+eta) ))
+        #   eta->inf    mu=0
+        #
+        #                q                  mu
+        #     = -1/2  sum   binom(q,mu) (-1)   log(a_u)
+        #                mu
+        h_value -= 0.5 * np.log(a_u) * np.exp(-h_second_term)
+
         return h_value
     else:
-        h_value = (2 * (h_first_term + h_second_term) - 3)/2/(h_first_term-1) * h_func(h_first_term-1, h_second_term) - h_second_term/(h_first_term-1) * h_func(h_first_term-2, h_second_term)
+        h_value = (2 * (h_first_term + h_second_term) - 3)/2/(h_first_term-1) * h_func(h_first_term-1, h_second_term, a_u) - h_second_term/(h_first_term-1) * h_func(h_first_term-2, h_second_term, a_u)
         return h_value
 
 
@@ -176,9 +188,10 @@ def polarization_integral(x_1, y_1, z_1,  x_exp_i, y_exp_i, z_exp_i, alpha_ii,
                                                                         h_first_term = pol_power_r_half - s - v
                                                                         h_second_term = b_sq/a_u
                                                                         
-                                                                        temp_value = coeff_k_nf_x1x2y1y2z1z2_r_gxyz_a * comb(int(pol_power_r_half), v) * pow(-1, v) * h_func(h_first_term, h_second_term)
+                                                                        temp_value = coeff_k_nf_x1x2y1y2z1z2_r_gxyz_a * comb(int(pol_power_r_half), v) * pow(-1, v) * h_func(h_first_term, h_second_term, a_u)                                                                        
+                                                                        ###
                                                                         pol_int_value += temp_value
-                                                                        print('Case2b', x_pow, y_pow, z_pow, gx_exp, gy_exp, gz_exp)
+                                                                        #print('Case2b', x_pow, y_pow, z_pow, gx_exp, gy_exp, gz_exp)
 
     return pol_int_value
 
