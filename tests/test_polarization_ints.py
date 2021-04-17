@@ -1206,8 +1206,80 @@ class TestPolarizationIntegrals(unittest.TestCase):
                                     relative_error = abs(pint - pint_numerical)/abs(pint_numerical)
                                     # numerical accuracy is quite low
                                     self.assertTrue( (absolute_error < 1.0e-3) or (relative_error < 1.0e-3) )
-    """
+    def test_polarization_integrals_case_2b_small_b_numerical(self):
+        """
+        compare polarization integrals for the case `k=2*j+1` with s-j < 0 
+        with the numerical integrals for the limit b -> 0
+        """
+        try:
+            from polarization_ints_numerical import polarization_integral as polarization_integral_numerical
+        except ImportError as err:
+            print("numerical integrals not available, skip this test")
+            return
+
+        # increase resolution of integration grids
+        from becke import settings
+        settings.radial_grid_factor = 3  # increase number of radial points by factor 3
+        settings.lebedev_order = 23      # angular Lebedev grid of order 23
+
+        # make random numbers reproducible
+        np.random.seed(0)
+
+        # First center
+        xi,yi,zi = 2.0 * 2.0*np.array(np.random.rand(3)-0.5)
+        # exponents of radial parts of Gaussians
+        beta_i = 0.234
+        beta_j = 1.255
+        # The second center is chosen such that
+        #  b = |beta_i * ri + beta_j * rj| = eps, such that x = b^2 / alpha << 1
+        eps = 1.0
+        xj,yj,zj = - beta_i/beta_j * np.array([xi,yi,zi]) + eps * 2.0*(np.random.rand(3)-0.5)
+        # cutoff function
+        alpha = 50.0
+
+        ## Check integrals up to g-functions
+        #l_max = 4
+        # Check integrals up to d-function
+        l_max = 2
+        
+        # enumerate powers of polarization operator
+        for k in [3]:
+            for mx,my,mz in partition3(0):
+                # Since k = 3 and s >= mx+my+mz = 0, we have j = 1 and s-j < 0 for some integrals
+                # power of cutoff function
+                q = max(2, int(kappa(k) - kappa(mx) - kappa(my) + kappa(mz) - 1))
+                # enumerate angular momenta of basis functions
+                for li in range(0, l_max+1):
+                    for lj in range(0, l_max+1):
+                        # prepare for integrals between shells with angular momenta li and lj
+                        pol = PolarizationIntegral(xi,yi,zi, li, beta_i,
+                                                   xj,yj,zj, lj, beta_j,
+                                                   k, mx,my,mz,
+                                                   alpha, q)
+                        for nxi,nyi,nzi in partition3(li):
+                            for nxj,nyj,nzj in partition3(lj):
+                                label=f"k={k} mx={mx} my={my} mz={mz} , q={q} , nxi={nxi} nyi={nyi} nzi={nzi} , nxj={nxj} nyj={nyj} nzj={nzj}"
+                                with self.subTest(label=label):
+                                    # fast C++ implementation
+                                    pint = pol.compute_pair(nxi,nyi,nzi,
+                                                            nxj,nyj,nzj)
+
+                                    # slow numerical integrals
+                                    pint_numerical = polarization_integral_numerical(xi,yi,zi, nxi,nyi,nzi, beta_i,
+                                                                                     xj,yj,zj, nxj,nyj,nzj, beta_j,
+                                                                                     k, mx,my,mz,
+                                                                                     alpha, q)
+                                    
+                                    print(label + f"  integral= {pint:+12.7f}  numerical= {pint_numerical:+12.7f}")
+                                    absolute_error = abs(pint - pint_numerical)
+                                    relative_error = abs(pint - pint_numerical)/abs(pint_numerical)
+                                    # numerical accuracy is quite low
+                                    self.assertTrue( (absolute_error < 1.0e-3) or (relative_error < 1.0e-3) )
+                                    
     def test_000_integral(self):
+        """
+        test integrals for case 2b for b=0
+        """
         try:
             from polarization_ints_numerical import polarization_integral as polarization_integral_numerical
         except ImportError as err:
@@ -1232,7 +1304,7 @@ class TestPolarizationIntegrals(unittest.TestCase):
         nxj,nyj,nzj = 1,0,1
         beta_j = 1.0
 
-        li,lj = 0,0
+        li,lj = nxi+nyi+nzi,nxj+nyj+nzj
 
         pint_numerical = polarization_integral_numerical(xi,yi,zi, nxi,nyi,nzi, beta_i,
                                                          xj,yj,zj, nxj,nyj,nzj, beta_j,
@@ -1258,7 +1330,7 @@ class TestPolarizationIntegrals(unittest.TestCase):
                                 nxj,nyj,nzj)
 
         print(pint)
-    """
+
     
 if __name__ == '__main__':
     unittest.main()

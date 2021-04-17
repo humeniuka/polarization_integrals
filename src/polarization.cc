@@ -595,9 +595,6 @@ PolarizationIntegral::PolarizationIntegral(
     f[i+1] = (i+0.5)*f[i];
   }
   
-  /* Precalculate unique integrals J
-     The factor exp(-w0) = exp(-beta_i*ri^2 - beta_j*rj^2) is pulled into the integral 
-  */
   double w0 = beta_i * ri2 + beta_j * rj2;
   // allocate zeroed memory 
   integs = new double[s_max+1]();
@@ -619,7 +616,7 @@ PolarizationIntegral::PolarizationIntegral(
   double a_mu, x, invx;
   double a_mu_jm32, a_mu_pow; 
   
-  double test_binom_nu;
+  //double test_binom_nu;
   double binom_jm1_nu, binom_j_nu;
   int nu;
 
@@ -647,8 +644,13 @@ PolarizationIntegral::PolarizationIntegral(
 
   // temporary work space
   double *work = new double[max(-p_min+p_max+1,s_max+j+1)];
+
+  /* 
+     Precalculate unique integrals J
+     The factor exp(-w0) = exp(-beta_i*ri^2 - beta_j*rj^2) is pulled into the integral 
+  */
   
-  double test_binom_mu = 0.0;
+  //double test_binom_mu = 0.0;
   double binom_q_mu = 1.0;
   for (mu=0; mu <= q; mu++) {
     // eqn. (15)
@@ -658,6 +660,7 @@ PolarizationIntegral::PolarizationIntegral(
     if(x < x_small) {
       /* x = (b^2/a_mu) -> 0 limit */
       if (k % 2 == 0) {
+	//cout << "Case 1 (x < x_small)" << endl;
 	// Case 1: k=2*j
 	/*
 	                     q                    mu   -s+j-3/2     j-1                     nu
@@ -670,7 +673,7 @@ PolarizationIntegral::PolarizationIntegral(
 	d_func_zero_limit(x, p_min, p_max, w0, d);
 	// array d contains \tilde{d}_p = x^{-p-1/2} d_p
 
-	test_binom_nu = 0.0;
+	//test_binom_nu = 0.0;
 	binom_jm1_nu = 1.0;
 	for(nu=0; nu <= j-1; nu++) {
 	  // a_mu_pow = a_mu^{-s+j-3/2}
@@ -680,32 +683,42 @@ PolarizationIntegral::PolarizationIntegral(
 	    integs[s] += c * binom_q_mu * binom_jm1_nu * a_mu_pow * d[s-j+nu+1];
 	    // 
 	    assert((s-j+nu+1 <= p_max) && (p_min <= s-j+nu+1 ));
-	    assert(abs(a_mu_pow - pow(a_mu,-s+j-1.5))/abs(a_mu_pow) < 1.0e-10);
+	    //assert(abs(a_mu_pow - pow(a_mu,-s+j-1.5))/abs(a_mu_pow) < 1.0e-10);
 
 	    a_mu_pow /= a_mu;
 	  }
-	  test_binom_nu += binom_jm1_nu;
+	  //test_binom_nu += binom_jm1_nu;
+	  
 	  // update binomial coefficients for next iteration
 	  //  B_{n,k+1} = x (n-k)/(k+1) B_{n,k}
 	  binom_jm1_nu *= ((-1) * (j-1-nu))/(nu + 1.0);
 	}
-	assert(abs(test_binom_nu - pow(1-1,j-1)) < 1.0e-10);
+	//assert(abs(test_binom_nu - pow(1-1,j-1)) < 1.0e-10);
       } else {
 	// Case 2: k=2*j+1 and x < x_small
 	assert(k == 2*j+1);
-	
-	/* 
+
+	double expx, expxmw0;
+	if (s_max-j >= 0) {
+	  /* 
 	   compute integrals from Taylor expansion for small x
 
 	     \tilde{g}(p+1/2, x) = x^{-p-1/2} gamma(p+1/2,x)
 	                         = \tilde{d}(p+1/2, -x)
 
-	*/
-	d_func_zero_limit(-x, 0, p_max, w0, d);
-	// Now d[p] = \tilde{d}(p+1/2,-x)
+	  */
+	  d_func_zero_limit(-x, 0, p_max, w0, d);
+	  // Now d[p] = \tilde{d}(p+1/2,-x)
 
-	// the factor exp(-w0) is taken care of by d_func_zero_limit()
-	double expx = exp(x);
+	  // the factor exp(-w0) is taken care of by d_func_zero_limit()
+	  expx = exp(x);
+	}
+	if (s_min-j < 0) {
+	  expxmw0 = exp(x-w0);
+	  h1_add = -0.5 * log(a_mu);
+	  // compute integrals H(p,x)
+	  h_func(x, -s_max, j, h1_add, work, h);
+	}
 	// a_mu^{j-s-1}
 	a_mu_pow = pow(a_mu, j-1);
 
@@ -714,7 +727,8 @@ PolarizationIntegral::PolarizationIntegral(
 	    // The integrals for s < s_min are not needed, but we have to start the
 	    // loop from s=0 to get the binomial coefficients right.
 	  } else if (s-j >= 0) {
-	    // Subcase 1: s-j >= 0, eqn. (32)
+	    //cout << "Subcase 2a (x < x_small)" << endl;
+	    // Subcase 2a: s-j >= 0, eqn. (32)
 	    /*
 	                       q                    mu   j-s-1 
 	      integs[s] = c sum     binom(q,mu) (-1)    a      exp(x)
@@ -724,32 +738,58 @@ PolarizationIntegral::PolarizationIntegral(
 			         sum     binom(s-j,nu) (-1)    \tilde{d}(j+nu+1/2, -x)
                                     nu=0
 	    */
-	    test_binom_nu = 0.0;
+	    //test_binom_nu = 0.0;
 	    binom_smj_nu = 1.0;
 	    for(nu=0; nu <= s-j; nu++) {
 	      assert(j+nu <= s_max);
 	      integs[s] += c * binom_q_mu * a_mu_pow * expx * binom_smj_nu * d[j+nu];
 
-	      test_binom_nu += binom_smj_nu;
-	      assert(abs(a_mu_pow - pow(a_mu, j-s-1)) < 1.0e-10);
+	      //test_binom_nu += binom_smj_nu;
+	      //assert(abs(a_mu_pow - pow(a_mu, j-s-1)) < 1.0e-10);
+	      
 	      // update binomial coefficient
 	      binom_smj_nu *= ((-1) * (s-j-nu))/(nu + 1.0);
 	    }
-	    assert(abs(test_binom_nu - pow(1-1,s-j)) < 1.0e-10);
+	    //assert(abs(test_binom_nu - pow(1-1,s-j)) < 1.0e-10);
 	  } else {
-	    // Subcase 2: s-j < 0, eqn. (39)
-	    cout << "j= " << j << " s-j= " << s-j << endl;
-	    assert(1 == 2 && "Case 2 (k=2*j+1), subcase s-j < 0 not implemented yet");
-	    //integs[s] = c;
+	    assert(s-j < 0);
+	    assert(q >= j-s); 
+	    //cout << "Subcase 2b (x < x_small)" << endl;
+	    // Subcase 2b: s-j < 0 for x < x_small, eqn. (39)
+	    /*
+	                         q                    mu  j-s-1
+	      integs[s] = 2 c sum     binom(q,mu) (-1)   a       exp(x - w0)
+	                         mu=0
+
+                                     j                    nu
+				  sum     binom(j,nu) (-1)   H(j-s-nu, x)
+				     nu=0
+	    */
+	    //test_binom_nu = 0.0;
+	    binom_j_nu = 1.0;
+	    for(nu=0; nu <= j; nu++) {
+	      assert((-s_max <= j-s-nu) && (j-s-nu <= j));
+
+	      integs[s] += 2 * c * binom_q_mu * a_mu_pow * expxmw0 * binom_j_nu * h[j-s-nu];
+	      
+	      //test_binom_nu += binom_j_nu;
+	      //assert(abs(a_mu_pow - pow(a_mu, j-s-1)) < 1.0e-10);
+	      
+	      // update binomial coefficient
+	      binom_j_nu *= ((-1) * (j-nu))/(nu + 1.0);
+	    }
+	    //assert(abs(test_binom_nu - pow(1-1, j)) < 1.0e-10);
 	  }
 
 	  a_mu_pow /= a_mu;
 	} // end loop over s
       }
-    } else { // x > x_small
+    } else {
+      /* x > x_small */
       invx = 1.0/x;
     
       if (k % 2 == 0) {
+	//cout << "Case 1 (x >= x_small)" << endl;
 	// Case 1: k=2*j, eqn. (22)
 	/*
 	                     q                    mu   -2*s+2*j-3     j-1                     a   nu                   b^2
@@ -759,7 +799,7 @@ PolarizationIntegral::PolarizationIntegral(
 	// compute integrals d(p+1/2,x)
 	d_func(x, p_min, p_max, w0, d);
 	
-	test_binom_nu = 0.0;
+	//test_binom_nu = 0.0;
 	binom_jm1_nu = 1.0;
 	for(nu=0; nu <= j-1; nu++) {
 	  b_pow = b2jm3;
@@ -768,16 +808,17 @@ PolarizationIntegral::PolarizationIntegral(
 	    integs[s] += c * binom_q_mu * binom_jm1_nu * b_pow * d[s-j+nu+1];
 	    
 	    assert((s-j+nu+1 <= p_max) && (p_min <= s-j+nu+1 ));
-	    assert(abs(b_pow - pow(b,-2*s+2*j-3))/abs(b_pow) < 1.0e-10);
+	    //assert(abs(b_pow - pow(b,-2*s+2*j-3))/abs(b_pow) < 1.0e-10);
 	    
 	    b_pow /= b2;
 	  }
-	  test_binom_nu += binom_jm1_nu;
+	  //test_binom_nu += binom_jm1_nu;
+	  
 	  // update binomial coefficients for next iteration
 	  //  B_{n,k+1} = x (n-k)/(k+1) B_{n,k}
 	  binom_jm1_nu *= ((-invx) * (j-1-nu))/(nu + 1.0);
 	}
-	assert(abs(test_binom_nu - pow(1 - invx, j-1)) < 1.0e-10);
+	//assert(abs(test_binom_nu - pow(1 - invx, j-1)) < 1.0e-10);
       } else {
 	// Case 2: k=2*j+1
 	assert(k == 2*j+1);
@@ -791,8 +832,8 @@ PolarizationIntegral::PolarizationIntegral(
 	  // compute integrals H(p,x)
 	  h_func(x, -s_max, j, h1_add, work, h);
 	}
-	double expx = exp(x-w0);
-	double powinvx_expx = pow(invx, j+0.5) * expx;
+	double expxmw0 = exp(x-w0);
+	double powinvx_expxmw0 = pow(invx, j+0.5) * expxmw0;
 	// a_mu^{j-s-1}
 	a_mu_pow = pow(a_mu, j-1);
 
@@ -801,8 +842,8 @@ PolarizationIntegral::PolarizationIntegral(
 	    // The integrals for s < s_min are not needed, but we have to start the
 	    // loop from s=0 to get the binomial coefficients right.
 	  } else if (s-j >= 0) {
-	    //cout << "Case 2a" << endl;
-	    // Subcase 1: s-j >= 0, eqn. (32)
+	    //cout << "Subcase 2a (x >= x_small)" << endl;
+	    // Subcase 2a: s-j >= 0, eqn. (32)
 	    /*
 	                       q                    mu   j-s-1  -j-1/2
 	      integs[s] = c sum     binom(q,mu) (-1)    a      x       exp(x - w0)
@@ -812,23 +853,24 @@ PolarizationIntegral::PolarizationIntegral(
 			         sum     binom(s-j,nu) (- 1/x)    g(j+nu+1/2, x)
                                     nu=0
 	    */
-	    test_binom_nu = 0.0;
+	    //test_binom_nu = 0.0;
 	    binom_smj_nu = 1.0;
 	    for(nu=0; nu <= s-j; nu++) {
 	      assert(j+nu <= s_max);
-	      integs[s] += c * binom_q_mu * a_mu_pow * powinvx_expx * binom_smj_nu * g[j+nu];
+	      integs[s] += c * binom_q_mu * a_mu_pow * powinvx_expxmw0 * binom_smj_nu * g[j+nu];
 
-	      test_binom_nu += binom_smj_nu;
-	      assert(abs(a_mu_pow - pow(a_mu, j-s-1)) < 1.0e-10);
+	      //test_binom_nu += binom_smj_nu;
+	      //assert(abs(a_mu_pow - pow(a_mu, j-s-1)) < 1.0e-10);
+	      
 	      // update binomial coefficient
 	      binom_smj_nu *= ((-invx) * (s-j-nu))/(nu + 1.0);
 	    }
-	    assert(abs(test_binom_nu - pow(1-invx, s-j)) < 1.0e-10);
+	    //assert(abs(test_binom_nu - pow(1-invx, s-j)) < 1.0e-10);
 	  } else {
 	    assert(s-j < 0);
 	    assert(q >= j-s); 
-	    //cout << "Case 2b" << endl;
-	    // Subcase 2: s-j < 0, eqn. (39)
+	    //cout << "Subcase 2b (x >= x_small)" << endl;
+	    // Subcase 2b: s-j < 0, eqn. (39)
 	    /*
 	                         q                    mu  j-s-1
 	      integs[s] = 2 c sum     binom(q,mu) (-1)   a       exp(x - w0)
@@ -838,25 +880,27 @@ PolarizationIntegral::PolarizationIntegral(
 				  sum     binom(j,nu) (-1)   H(j-s-nu, x)
 				     nu=0
 	    */
-	    test_binom_nu = 0.0;
+	    //test_binom_nu = 0.0;
 	    binom_j_nu = 1.0;
 	    for(nu=0; nu <= j; nu++) {
 	      assert((-s_max <= j-s-nu) && (j-s-nu <= j));
 
-	      integs[s] += 2 * c * binom_q_mu * a_mu_pow * expx * binom_j_nu * h[j-s-nu];
+	      integs[s] += 2 * c * binom_q_mu * a_mu_pow * expxmw0 * binom_j_nu * h[j-s-nu];
 	      
-	      test_binom_nu += binom_j_nu;
-	      assert(abs(a_mu_pow - pow(a_mu, j-s-1)) < 1.0e-10);
+	      //test_binom_nu += binom_j_nu;
+	      //assert(abs(a_mu_pow - pow(a_mu, j-s-1)) < 1.0e-10);
+	      
 	      // update binomial coefficient
 	      binom_j_nu *= ((-1) * (j-nu))/(nu + 1.0);
 	    }
-	    assert(abs(test_binom_nu - pow(1-1, j)) < 1.0e-10);
+	    //assert(abs(test_binom_nu - pow(1-1, j)) < 1.0e-10);
 	  }
 	  a_mu_pow /= a_mu;
 	} // end loop over s
       }
     }
-    test_binom_mu += binom_q_mu;
+    //test_binom_mu += binom_q_mu;
+    
     // update binomial coefficient
     binom_q_mu *= ((-1)*(q-mu))/(mu + 1.0);
   } // end of loop over mu
@@ -867,7 +911,7 @@ PolarizationIntegral::PolarizationIntegral(
   delete[] work;
 
   // 0 = (1-1)^q = sum_{mu=0}^q binom(q,mu) (-1)^mu
-  assert(abs(test_binom_mu - pow(1-1,q)) < 1.0e-10);
+  //assert(abs(test_binom_mu - pow(1-1,q)) < 1.0e-10);
 }
 
 PolarizationIntegral::~PolarizationIntegral() {
@@ -899,7 +943,7 @@ double PolarizationIntegral::compute_pair(int nxi, int nyi, int nzi,
 
   // Variables beginning with test_... are only needed for the consistency of the code
   // and can be removed later.
-  double test_binomial_6, test_binomial_3;
+  //double test_binomial_6, test_binomial_3;
 
   // maximum values for lx,ly,lz
   int lx_max, ly_max, lz_max, l_max_;
@@ -919,7 +963,7 @@ double PolarizationIntegral::compute_pair(int nxi, int nyi, int nzi,
   assert(s_max_ <= s_max);
   
   // six nested for loops from binomial expansion of the cartesian basis functions (eqn. (9))
-  test_binomial_6 = 0.0;
+  //test_binomial_6 = 0.0;
   // x-loop    
   binom_xi_pow = 1.0;
   for(eta_xi=nxi; eta_xi >= 0; eta_xi--) {
@@ -945,10 +989,12 @@ double PolarizationIntegral::compute_pair(int nxi, int nyi, int nzi,
 	      // The six for-loops calculate the expression
 	      //  (1-xi)^nxi (1-yi)^nyi (1-zi)^nzi (1-xj)^nxj (1-yj)^nyj (1-zj)^nzj
 	      // using the binomial expansion theorem.
-	      test_binomial_6 += fxxyyzz;
+	      //test_binomial_6 += fxxyyzz;
 	      
 	      // three nested loops (eqn. (20))
-	      test_binomial_3 = 0.0;
+	      
+	      //test_binomial_3 = 0.0;
+	      
 	      // bx-loop
 	      binom_bx_pow = 1.0;
 	      for(zeta_x=lx; zeta_x >= 0; zeta_x--) {
@@ -967,7 +1013,7 @@ double PolarizationIntegral::compute_pair(int nxi, int nyi, int nzi,
 		    // The three for-loops calculate the expression
 		    //  (1+bx)^lx (1+by)^ly (1+bz)^lz
 		    // using the binomial expansion theorem.
-		    test_binomial_3 += gxyz;
+		    //test_binomial_3 += gxyz;
 
 		    if (even_x && even_y && even_z) {
 		      gxyz *= f[zeta_x/2] * f[zeta_y/2] * f[zeta_z/2];
@@ -986,7 +1032,7 @@ double PolarizationIntegral::compute_pair(int nxi, int nyi, int nzi,
 		}
 		binom_bx_pow *= (bx * zeta_x)/(lx - zeta_x + 1.0);
 	      }
-	      assert(abs(test_binomial_3 - pow(1+bx,lx)*pow(1+by,ly)*pow(1+bz,lz))/abs(test_binomial_3) < 1.0e-10);	      	      
+	      //assert(abs(test_binomial_3 - pow(1+bx,lx)*pow(1+by,ly)*pow(1+bz,lz))/abs(test_binomial_3) < 1.0e-10);	      	      
 	      // update binomial coefficients for next iteration
 	      //  B_{n,k-1} = x k / (n-k+1) B_{n,k}
 	      binom_zj_pow *= ((-zj) * eta_zj)/(nzj - eta_zj + 1.0);
@@ -1003,7 +1049,7 @@ double PolarizationIntegral::compute_pair(int nxi, int nyi, int nzi,
   }
 
   // consistency check
-  assert(abs(test_binomial_6 - pow(1-xi,nxi)*pow(1-yi,nyi)*pow(1-zi,nzi) * pow(1-xj,nxj)*pow(1-yj,nyj)*pow(1-zj,nzj))/abs(test_binomial_6) < 1.0e-10);
+  //assert(abs(test_binomial_6 - pow(1-xi,nxi)*pow(1-yi,nyi)*pow(1-zi,nzi) * pow(1-xj,nxj)*pow(1-yj,nyj)*pow(1-zj,nzj))/abs(test_binomial_6) < 1.0e-10);
 
   return op;
 }
