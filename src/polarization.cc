@@ -10,9 +10,9 @@ This library provides and efficient implementation of the special functions defi
 and the polarization integrals
 
              mx  my  mz
-            x   y   z           - alpha r  q
-  <CGTO   | ----------- (1 - exp          )   |CGTO  >
-       i        r^k                                j
+            x   y   z           - alpha r^2  q
+  <CGTO   | ----------- (1 - exp            )   |CGTO  >
+       i        r^k                                  j
 
 between unnormalized primitive Cartesian Gaussian functions 
 
@@ -28,7 +28,7 @@ and
 
 for k > 2. The power of the cutoff function q has to satisfy
 
-  q >= kappa(k/2) - kappa(mx/2) - kappa(my/2) - kappa(nz/2) - 1
+  q >= kappa(k/2) - kappa(mx/2) - kappa(my/2) - kappa(mz/2) - 1
 
                       n/2   if n is even
 where kappa(n) = {
