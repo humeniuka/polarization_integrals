@@ -267,17 +267,21 @@ double m_func(double x) {
   /*
     calculates
 
-           /x     t^2 
-    m(x) = | dt  e    erf(t)
-           /0
+                      /x     t^2 
+    m*(x) = exp(-x^2) | dt  e    erf(t)  =  exp(-x^2) m(x)
+                      /0
 
-  For x < 6, m(x) is computed by piecewise Taylor expansions and for x > 6
-  by the approximation m(x) = exp(x^2) erf(x) dawson(x).
+  For x < 6, m*(x) is computed by piecewise Taylor expansions of m(x) 
+  and for x > 6 by the approximation m*(x) = erf(x) dawson(x).
+
+  Note that m*(x) differs by the inclusion of the factor exp(-x^2) from 
+  the definition in Schwerdtfeger's article. This avoids overflows for 
+  large values of x.
   */
-  // return value
+  // return value m*(x)
   double m;
   if (x >= 6.0) {
-    m = exp(x*x) * Faddeeva::erf(x) * Faddeeva::Dawson(x);
+    m = Faddeeva::erf(x) * Faddeeva::Dawson(x);
   } else {
     // hard-coded values m(xi) and m'(xi) at the expansion points
     const double x0s[] = { 0., 0.5, 1., 1.5, 2., 2.5, 3., 3.5, 4., 4.5, 5., 5.5 };
@@ -340,8 +344,11 @@ double m_func(double x) {
       m += y * m_deriv[n];
       y *= dx/(n+1);
     }
-    
+
+    // include factor exp(-x^2) to avoid overflows
+    m *= exp(-x*x);
   }
+  
   return m;
 }
 
@@ -363,7 +370,9 @@ void h_func_large_x(double x, int p_min, int p_max, double h1_add, double *work,
   h[0] = (1.0/sqrtx) * Faddeeva::erf(sqrtx) / M_2_SQRTPI;
   if (p_max > 0) {
     //   H(1,x) in eqn. (37c) with correction `h1_add * exp(-x) = -1/2 log(a_mu) exp(-x)`
-    h[1] = 2.0 / M_2_SQRTPI * expmx * m_func(sqrtx)  +  h1_add * expmx;
+    // NOTE: m*(x) is modified to include the factor exp(-x^2), therefore
+    //       exp(-x) m(sqrt(x)) = m*(sqrt(x))
+    h[1] = 2.0 / M_2_SQRTPI * m_func(sqrtx)  +  h1_add * expmx;
   }
   for(p=2; p <= p_max; p++) {
     // compute H(p,x) from H(p-1,x) and H(p-2,x)
@@ -434,7 +443,9 @@ void h_func_small_x(double x, int p_min, int p_max, double h1_add, double *work,
     sqrtx = sqrt(x);
     expmx = exp(-x);
     //   H(1,x) in eqn. (37c) with correction `h1_add * exp(-x) = -1/2 log(a_mu) exp(-x)`
-    h[1] = 2.0 / M_2_SQRTPI * expmx * m_func(sqrtx)  +  h1_add * expmx;
+    // NOTE: m*(x) is modified to include the factor exp(-x^2), therefore
+    //       exp(-x) m(sqrt(x)) = m*(sqrt(x))
+    h[1] = 2.0 / M_2_SQRTPI * m_func(sqrtx)  +  h1_add * expmx;
   }
   for(p=2; p <= p_max; p++) {
     // compute H(p,x) from H(p-1,x) and H(p-2,x)
