@@ -75,7 +75,12 @@ def h_func(h_first_term, h_second_term, a_u=1.0):
 def polarization_integral(x_1, y_1, z_1,  x_exp_i, y_exp_i, z_exp_i, alpha_ii,
                           x_2, y_2, z_2,  x_exp_j, y_exp_j, z_exp_j, alpha_jj,
                           pol_power_r,  pol_power_x, pol_power_y, pol_power_z,
-                          cutoff_alpha, cutoff_power):
+                          cutoff_alpha, cutoff_power, original=False):
+    """
+    original :
+      True - use the original but wrong definition of H(1,a) in [CPP]
+      False - use correct form of H(1,a)
+    """
     pol_int_value = 0.0
     
     r_1_sq = pow(x_1, 2) + pow(y_1, 2) + pow(z_1, 2)
@@ -187,8 +192,19 @@ def polarization_integral(x_1, y_1, z_1,  x_exp_i, y_exp_i, z_exp_i, alpha_ii,
                                                                     for v in range(int(pol_power_r_half) + 1):
                                                                         h_first_term = pol_power_r_half - s - v
                                                                         h_second_term = b_sq/a_u
-                                                                        
-                                                                        temp_value = coeff_k_nf_x1x2y1y2z1z2_r_gxyz_a * comb(int(pol_power_r_half), v) * pow(-1, v) * h_func(h_first_term, h_second_term, a_u)                                                                        
+
+                                                                        if original == True:
+                                                                            from test_polarization_ints import h_func as h_func_array
+                                                                            # use H function without correction term
+                                                                            p = int(h_first_term)
+                                                                            pmin, pmax = min(p, 0), max(p, 0)
+                                                                            h = h_func_array(h_second_term, pmin, pmax)[p]
+                                                                            # Xiao's H-function is only approximate for small x
+                                                                            #h = h_func(h_first_term, h_second_term, 1.0)
+                                                                        else:
+                                                                            h = h_func(h_first_term, h_second_term, a_u)
+                                                                            
+                                                                        temp_value = coeff_k_nf_x1x2y1y2z1z2_r_gxyz_a * comb(int(pol_power_r_half), v) * pow(-1, v) * h                            
                                                                         ###
                                                                         pol_int_value += temp_value
                                                                         #print('Case2b', x_pow, y_pow, z_pow, gx_exp, gy_exp, gz_exp)

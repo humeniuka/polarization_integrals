@@ -275,8 +275,9 @@ def h_func(x, pmin, pmax):
     # H(0,x), eqn. (37b)
     sqrtx = np.sqrt(x)
     h[0] = 0.5 * np.sqrt(np.pi)/sqrtx * special.erf(sqrtx)
-    # H(1,x), eqn. (37c)
-    h[1] = np.sqrt(np.pi) * np.exp(-x) * m_func(sqrtx)
+    if (pmax > 0):
+        # H(1,x), eqn. (37c)
+        h[1] = np.sqrt(np.pi) * np.exp(-x) * m_func(sqrtx)
     """
     # I think the following is wrong because of the missing factors sqrt(pi)/2,
     # but with these definitions for H(0,x) and H(1,x) I get the same result as Xiao for p > 0.
