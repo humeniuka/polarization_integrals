@@ -32,9 +32,9 @@ alpha = 50.0
 q = 2
 
 # centers of GTOs
-xi,yi,zi = 0,0,-1
+xi,yi = 0,0
 xj,yj = 0,0
-# z-coordiante of second GTO is varied to get different cases (b > 0 and b == 0)
+# The z-coordiantes of GTOs are varied to get different cases (b > 0 and b == 0)
 
 # powers of Cartesian coordinates
 nxi,nyi,nzi = 0,0,0
@@ -44,7 +44,7 @@ nxj,nyj,nzj = 0,0,0
 mx,my = 0,0
 # mz is varied to get different cases (1, 2.1 or 2.2)
 
-def write_row(k=3, mz=0, zj=0.5, nzj=0):
+def write_row(k=3, mz=0, zi=0.5, zj=0.5, nzj=0):
     li = nxi+nyi+nzi
     lj = nxj+nyj+nzj
     
@@ -56,9 +56,21 @@ def write_row(k=3, mz=0, zj=0.5, nzj=0):
     # fast C++ implementation
     pint = pol.compute_pair(nxi,nyi,nzi,
                             nxj,nyj,nzj)
+    
     # numerical integrals
-    pint_numerical = polarization_integral_numerical(xi,yi,zi, nxi,nyi,nzi, beta_i,
-                                                     xj,yj,zj, nxj,nyj,nzj, beta_j,
+    # The numerical integration fails if the centers coincide exactly, so we add a small number
+    eps = 1.0e-6
+    if (abs(zi) < 10*eps) and (abs(zj) < 10*eps):
+        zi -= eps
+        zj += eps
+        zi_ = zi - eps
+        zj_ = zj + eps
+    else:
+        zi_ = zi
+        zj_ = zj
+
+    pint_numerical = polarization_integral_numerical(xi,yi,zi_, nxi,nyi,nzi, beta_i,
+                                                     xj,yj,zj_, nxj,nyj,nzj, beta_j,
                                                      k, mx,my,mz,
                                                      alpha, q)
 
@@ -95,22 +107,29 @@ def write_row(k=3, mz=0, zj=0.5, nzj=0):
         case += " (b = 0) "
     else:
         case += "         "
-
         
-    print(f"{case} &  {k} & {mz}     & ${zj}$  &  ${pint_reference:+12.7f}$ &  ${pint:+12.7f}$   & ${pint_numerical:+12.7f}$     \\\\")   
+    print(f"{case} &  {k} & {mz}     & ${zi}$  & ${zj}$  &  ${pint_reference:+12.7f}$ &  ${pint:+12.7f}$   & ${pint_numerical:+12.7f}$     \\\\")   
 
 # write header
-print(f"Case              &  k & $m_3$ & $z_j$  &       original  &       corrected   &      numerical     \\\\ \\midrule") 
-    
+print(f"Case              &  k & $m_3$ & $z_1$  & $z_2$  &       original  &       corrected   &      numerical     \\\\ \\midrule") 
+
 # Case 1  (b > 0)
-write_row(k=4, mz=0, zj=0.5)
-# Case 1  (b == 0)
-write_row(k=4, mz=0, zj=1.0)    
+write_row(k=4, mz=0, zi=-1.0, zj=0.5)
+## Case 1  (b == 0)
+#write_row(k=4, mz=0, zi=-1.0, zj=1.0)
+# Case 1  (b == 0, all centers coincide)
+#write_row(k=4, mz=0, zi=0.0, zj=0.0)
+
 # Case 2.1  (b > 0)
-write_row(k=3, mz=1, zj=0.5)
-# Case 2.1  (b == 0)
-write_row(k=3, mz=1, zj=1.0)    
+write_row(k=3, mz=1, zi=-1.0, zj=0.5)
+## Case 2.1  (b == 0)
+#write_row(k=3, mz=1, zi=-1.0, zj=1.0)    
+# Case 2.1  (b == 0, all centers coincide)
+#write_row(k=3, mz=1, zi=0.0, zj=0.0)    
+
 # Case 2.2  (b > 0)
-write_row(k=3, mz=0, zj=0.5)
-# Case 2.2  (b == 0)
-write_row(k=3, mz=0, zj=1.0)
+write_row(k=3, mz=0, zi=-1.0, zj=0.5)
+## Case 2.2  (b == 0)
+#write_row(k=3, mz=0, zi=-1.0, zj=1.0)
+# Case 2.2  (b == 0, all centers coincide)
+write_row(k=3, mz=0, zi=0.0, zj=0.0)
