@@ -1,5 +1,4 @@
-
-
+This is the GPU implementation of the polarization integrals.
 
 Profiling
 ---------

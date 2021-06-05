@@ -57,10 +57,10 @@ void polarization_prim_pairs(// array of pairs of primitives
   /*
    AO polarization integrals for pairs of primitives
 
-                          mx  my  mz
-                        x'  y'  z'          - alpha r'^2  q
-     buffer[ij] = <AO | ----------- (1 - exp             )   |AO  >
-                     i      r'^k                                j
+                                      mx  my  mz
+                                    x'  y'  z'          - alpha r'^2  q
+     buffer[ij] = coef  coef  <AO | ----------- (1 - exp             )   |AO  >
+                      i     j    i      r'^k                                j
 
 
    with r' = r - origin. The integrals for the pair of primitives `pair = pairs[ipair]`

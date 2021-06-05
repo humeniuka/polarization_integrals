@@ -99,6 +99,12 @@ from each shell.
    print( I.compute_pair(0,0,0,  0,0,1) )
 
 
+GPU Support
+-----------
+Polarization integrals can be calculated in parallel on a GPU which supports CUDA.
+The kernels with python binding are located in the folder `src_gpu/`.
+
+
 References
 ----------
 [CPP] P. Schwerdtfeger, H. Silberbach,
