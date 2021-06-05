@@ -1136,8 +1136,6 @@ __global__ void polarization_prim_pairs_kernel(
 		  int npair,
 		  // output
 		  double *buffer,
-		  // position of polarizable atom
-		  double3 origin,
 		  // operator    O(r) = x^mx y^my z^mz |r|^-k 
 		  int k, int mx, int my, int mz,
 		  // cutoff function F2(r) = (1 - exp(-alpha r^2))^q
@@ -1145,13 +1143,10 @@ __global__ void polarization_prim_pairs_kernel(
   /*
     AO polarization integrals for pairs of primitives
 
-                          mx  my  mz
-                        x'  y'  z'          - alpha r'^2  q
-     buffer[ij] = <AO | ----------- (1 - exp             )   |AO  >
-                     i      r'^k                                j
-
-
-   with r' = r - origin.
+                                     mx my mz
+                                    x  y  z           - alpha r^2  q
+     buffer[ij] = coef  coef  <AO | --------- (1 - exp            )   |AO  >
+                      i     j    i    r^k                                j
 
    See header file for more information.
   */
@@ -1166,18 +1161,13 @@ __global__ void polarization_prim_pairs_kernel(
   Primitive *primA = &(pair.primA);
   Primitive *primB = &(pair.primB);
 
-  // shift polarizable site to origin of coordinate system
-  double3 A = {primA->x - origin.x, 
-	       primA->y - origin.y, 
-	       primA->z - origin.z};
-  double3 B = {primB->x - origin.x, 
-	       primB->y - origin.y, 
-	       primB->z - origin.z};
+  // The coordinate system is assumed to have been shifted so that the 
+  // polarizable site lies at the origin.
 
   // Polarization integrals can reuse data if angular momentum quantum numbers
   // L(I)=angmomI and L(J)=angmomJ do not change. 
-  PolarizationIntegral integrals(A.x, A.y, A.z, primA->l, primA->exp,
-				 B.x, B.y, B.z, primB->l, primB->exp,
+  PolarizationIntegral integrals(primA->x, primA->y, primA->z, primA->l, primA->exp,
+				 primB->x, primB->y, primB->z, primB->l, primB->exp,
 				 k, mx,my,mz,
 				 alpha, q);
 
@@ -1221,8 +1211,6 @@ void polarization_prim_pairs(// pointer to array of pairs of primitives in GPU m
 			   int npair,
 			   // pointer to output buffer in GPU memory
 			   double *buffer,
-			   // position of polarizable atom
-			   double3 origin,
 			   // operator    O(r) = x^mx y^my z^mz |r|^-k 
 			   int k, int mx, int my, int mz,
 			   // cutoff function F2(r) = (1 - exp(-alpha r^2))^q
@@ -1238,7 +1226,6 @@ void polarization_prim_pairs(// pointer to array of pairs of primitives in GPU m
   // launch kernel
   polarization_prim_pairs_kernel<<<gridDim,blockDim>>>(pairs, npair, 
 						       buffer, 
-						       origin,
 						       k, mx, my, mz,
 						       alpha, q);
   CHECK_CUDA_ERR();

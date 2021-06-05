@@ -10,7 +10,6 @@
 #include "polarization.h"
 
 int main() {
-  double3 origin = {0.0, 0.0, 0.0};
   int k = 3;
   int mx = 0;
   int my = 0;
@@ -88,7 +87,6 @@ int main() {
   // compute integrals
   polarization_prim_pairs(pairs_, npair, 
 			  buffer_, 
-			  origin, 
 			  k, mx, my, mz,
 			  alpha, q);
   cudaProfilerStop();

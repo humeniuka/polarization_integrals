@@ -12,15 +12,9 @@
 namespace py = pybind11;
 using namespace pybind11::literals;
 
-// avoid copy operations when passing lists
-//PYBIND11_MAKE_OPAQUE(std::vector<PrimitivePair>);
-//PYBIND11_MAKE_OPAQUE(std::vector<double>);
-
 std::vector<double> polarization_prim_pairs_wrapper(
 				     // array of pairs of primitives
 				     const std::vector<PrimitivePair> &pairs_vector,
-				     // position of polarizable atom
-				     const std::vector<double> origin_vector,
 				     // operator    O(r) = x^mx y^my z^mz |r|^-k 
 				     int k, int mx, int my, int mz,
 				     // cutoff function F2(r) = (1 - exp(-alpha r^2))^q
@@ -32,11 +26,6 @@ std::vector<double> polarization_prim_pairs_wrapper(
   if ((err != cudaSuccess) || (count == 0)) {
     throw std::runtime_error("No CUDA device found!");
   }
-  // check input 
-  if (origin_vector.size() != 3) {
-    throw py::value_error("Parameter origin should be a list of 3 floats!");
-  }
-  double3 origin = {origin_vector[0], origin_vector[1], origin_vector[2]};
   // access underlying data of primitive pairs
   const PrimitivePair *pairs = pairs_vector.data();
   int npair = pairs_vector.size();
@@ -59,7 +48,6 @@ std::vector<double> polarization_prim_pairs_wrapper(
   // do the integrals
   polarization_prim_pairs(pairs_, npair,
 			  buffer_,
-			  origin,
 			  k, mx, my, mz, alpha, q);
 
   // copy integrals from GPU to CPU
@@ -136,11 +124,9 @@ Parameters
 ----------
 pairs       :    list of PrimitivePair
   pairs of bra and ket Gaussian-type primitives
-origin      :    list [xO,yO,zO]
-  Cartesian positions of polarizable atom
 k, mx,my,mz :    int
   powers defining the polarization operator  
-   O(r-rO) = (x-xO)^mx (y-yO)^my (z-zO)^mz |r-rO|^-k 
+   O(r) = x^mx y^my z^mz |r-rO|^-k 
 alpha       :    float
   exponent of cutoff function cutoff(r)=(1-exp(-alpha r^2))^q
 q           :    int
@@ -157,17 +143,18 @@ Details
 -------
 The polarization integral is
 
-                                   mx  my  mz
-                                 x'  y'  z'          - alpha r'^2  q
-  buffer[ij] = coef  coef  <AO | ----------- (1 - exp             )   |AO  >
-                   i     j    i      r'^k                                j
+                                  mx my mz
+                                 x  y  z          - alpha r^2  q
+  buffer[ij] = coef  coef  <AO | ----------- (1 - exp         )   |AO  >
+                   i     j    i      r^k                             j
 
-with r' = r - origin. The integrals for the pair of primitives `pair = pairs[ipair]`
-starts at index `ij = pair.bufferIdx`. The number of integrals per pair depends on the
-angular momenta of the primitives. Since a primitive with angular momentum l 
-has `N(l)=(l+1)(l+2)/2)` Cartesian components, there are `N(prim.primA.l) * N(prim.primB.l)`
-integrals for each pair of primitives. The cartesian angular momentum components are 
-generated in the following order:
+The coordinate system has to be shifted such that the polarizable atom lies at the origin.
+
+The integrals for the pair of primitives `pair = pairs[ipair]` starts at index `ij = pair.bufferIdx`. 
+The number of integrals per pair depends on the angular momenta of the primitives. 
+Since a primitive with angular momentum l has `N(l)=(l+1)(l+2)/2)` Cartesian components, 
+there are `N(prim.primA.l) * N(prim.primB.l)` integrals for each pair of primitives. 
+The cartesian angular momentum components are generated in the following order:
  
      l               angular functions          (l+1)(l+2)/2
    ----------------------------------------------------------
@@ -192,7 +179,7 @@ NOTE: The primitives should be sorted by the angular momenta (by the key `(primA
 
 
 )LITERAL",
-	"pairs"_a, "origin"_a, "k"_a, "mx"_a, "my"_a, "mz"_a,
+	"pairs"_a, "k"_a, "mx"_a, "my"_a, "mz"_a,
 	"alpha"_a, "q"_a);
 }
 

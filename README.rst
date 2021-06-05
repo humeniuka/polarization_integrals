@@ -44,6 +44,12 @@ Requirements
  - python3
  - pybind11
 
+For parallel evaluation of integrals on a GPU you need in addition
+
+ - CUDA Toolkit (nvcc)
+ - a CUDA supported GPU device
+
+
 Getting Started
 ---------------
 The package is installed by running
@@ -103,6 +109,20 @@ GPU Support
 -----------
 Polarization integrals can be calculated in parallel on a GPU which supports CUDA.
 The kernels with python binding are located in the folder `src_gpu/`.
+The kernels and python wrapper are compiled with
+
+.. code-block:: bash
+
+   $ cd src_gpu
+   $ make
+
+The correctness of the GPU integrals should be verified by comparison with the CPU implementation
+by running a set of tests with
+
+.. code-block:: bash
+
+   $ cd tests_gpu
+   $ python -m unittest
 
 
 References

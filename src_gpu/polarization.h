@@ -48,8 +48,6 @@ void polarization_prim_pairs(// array of pairs of primitives
 		  // output buffer, the required size of the buffer for all integrals
 		  // can be determined with the help of `integral_buffer_size(...)`.
 		  double *buffer,
-		  // position of polarizable atom
-		  double3 origin,
 		  // operator    O(r) = x^mx y^my z^mz |r|^-k 
 		  int k, int mx, int my, int mz,
 		  // cutoff function F2(r) = (1 - exp(-alpha r^2))^q
@@ -57,18 +55,20 @@ void polarization_prim_pairs(// array of pairs of primitives
   /*
    AO polarization integrals for pairs of primitives
 
-                                      mx  my  mz
-                                    x'  y'  z'          - alpha r'^2  q
-     buffer[ij] = coef  coef  <AO | ----------- (1 - exp             )   |AO  >
-                      i     j    i      r'^k                                j
+   The polarization integral is
 
+                                     mx my mz
+                                    x  y  z          - alpha r^2  q
+     buffer[ij] = coef  coef  <AO | ----------- (1 - exp         )   |AO  >
+                      i     j    i      r^k                             j
 
-   with r' = r - origin. The integrals for the pair of primitives `pair = pairs[ipair]`
-   starts at index `ij = pair.bufferIdx`. The number of integrals per pair depends on the
-   angular momenta of the primitives. Since a primitive with angular momentum l 
-   has `N(l)=(l+1)(l+2)/2)` Cartesian components, there are `N(prim.primA.l) * N(prim.primB.l)`
-   integrals for each pair of primitives. The cartesian angular momentum components are 
-   generated in the following order:
+   The coordinate system has to be shifted such that the polarizable atom lies at the origin.
+
+   The integrals for the pair of primitives `pair = pairs[ipair]` starts at index `ij = pair.bufferIdx`. 
+   The number of integrals per pair depends on the angular momenta of the primitives. 
+   Since a primitive with angular momentum l has `N(l)=(l+1)(l+2)/2)` Cartesian components, 
+   there are `N(prim.primA.l) * N(prim.primB.l)` integrals for each pair of primitives. 
+   The cartesian angular momentum components are generated in the following order:
  
         l               angular functions          (l+1)(l+2)/2
       ----------------------------------------------------------
