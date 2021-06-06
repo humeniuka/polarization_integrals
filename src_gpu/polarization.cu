@@ -46,6 +46,11 @@ where kappa(n) = {
 External Libraries
 ------------------
  -  Faddeeva package (http://ab-initio.mit.edu/Faddeeva.cc and http://ab-initio.mit.edu/Faddeeva.hh) 
+
+Author
+------
+Alexander Humeniuk  (alexander.humeniuk@gmail.com)
+
 */
 //
 
@@ -59,12 +64,12 @@ External Libraries
 
 #include "polarization.h"
 // Dawson function from Faddeeva library
-#include "Dawson.cu"
+#include "Dawson_real.cu"
 
 //////////////////// MACROS FOR DEBUGGING /////////////////////////
+#undef NDEBUG
 // uncomment the following line to turn off assertions and printing debug messages
 #define NDEBUG
-//#undef NDEBUG
 
 #ifdef NDEBUG
 
@@ -107,7 +112,8 @@ External Libraries
 
 /////////////////// SPECIAL FUNCTIONS //////////////////////////////
 
-__device__ void d_func(double x, int p_min, int p_max, double w0, double *d) {
+template <typename real>
+__device__ void d_func(real x, int p_min, int p_max, real w0, real *d) {
   /*
     Arguments
     ---------
@@ -160,11 +166,11 @@ __device__ void d_func(double x, int p_min, int p_max, double w0, double *d) {
    */
   assert((p_min <= 0) && (p_max >= 0));
   int p;
-  double xp, ixp;
+  real xp, ixp;
   // constants during iteration
-  double expx = exp(x-w0);
-  double sqrtx = sqrt(x);
-  double dwsn = Dawson(sqrtx);
+  real expx = exp(x-w0);
+  real sqrtx = sqrt(x);
+  real dwsn = Dawson<real>(sqrtx);
   
   // initialization p=0
   d[0] = 2*expx * dwsn;
@@ -172,7 +178,7 @@ __device__ void d_func(double x, int p_min, int p_max, double w0, double *d) {
   // 1) upward iteration starting from p=0
   xp = sqrtx * expx;
   for(p=0; p<p_max; p++) {
-    d[p+1] = xp - (p+0.5)*d[p];
+    d[p+1] = xp - (p+((real) 0.5))*d[p];
     // x^(p+1/2)  * exp(x-w0)
     xp *= x;
   }
@@ -180,7 +186,7 @@ __device__ void d_func(double x, int p_min, int p_max, double w0, double *d) {
   // 2) downward iteration starting from p=0
   ixp = 1/sqrtx * expx;
   for(p=0; p > p_min; p--) {
-    d[p-1] = -(ixp - d[p])/(-p+0.5);
+    d[p-1] = -(ixp - d[p])/(-p+((real) 0.5));
     // x^(-(p+1/2)) * exp(x-w0)
     ixp /= x;
   }
@@ -188,7 +194,8 @@ __device__ void d_func(double x, int p_min, int p_max, double w0, double *d) {
   // returns nothing, output is in array d
 }
 
-__device__ void d_func_zero_limit(double x, int p_min, int p_max, double w0, double *d) {
+template <typename real>
+__device__ void d_func_zero_limit(real x, int p_min, int p_max, real w0, real *d) {
   /*
     The function \tilde{d} also computes d(p+1/2,x), however without the factor x^{p+1/2}:
 
@@ -216,9 +223,9 @@ __device__ void d_func_zero_limit(double x, int p_min, int p_max, double w0, dou
    */
   assert((p_min <= 0) && (p_max >= 0));
   int p, k;
-  double y;
+  real y;
   // constants during iteration
-  double expx = exp(x-w0);
+  real expx = exp(x-w0);
 
   // zero output array for indices p=0,...,p_max,
   // the memory locations pmin,...,-1 are overwritten, anyway.
@@ -241,9 +248,9 @@ __device__ void d_func_zero_limit(double x, int p_min, int p_max, double w0, dou
   y = exp(-w0);
   for(k=0; k < k_max; k++) {
     for(p=0; p <= p_max; p++) {
-      d[p] += y/(p+k+0.5);
+      d[p] += y/(p+k+((real) 0.5));
     }
-    y *= x/(k+1.0);
+    y *= x/(k+((real) 1.0));
   }
 
   /*
@@ -255,12 +262,13 @@ __device__ void d_func_zero_limit(double x, int p_min, int p_max, double w0, dou
           -(p+1)      p+1/2               -p
   */
   for(p=0; p < -p_min; p++) {
-    d[-(p+1)] = - (expx - x*d[-p])/(p+0.5);
+    d[-(p+1)] = - (expx - x*d[-p])/(p+((real) 0.5));
   }
   // returns nothing, output is in array d  
 }
 
-__device__ void g_func(double x, int p_max, double *g) {
+template <typename real>
+__device__ void g_func(real x, int p_max, real *g) {
   /*
     evaluates the integral
 
@@ -281,8 +289,8 @@ __device__ void g_func(double x, int p_max, double *g) {
   */
   assert(p_max >= 0);
   // constants during iteration
-  double sqrtx = sqrt(x);
-  double expmx = exp(-x);
+  real sqrtx = sqrt(x);
+  real expmx = exp(-x);
   /* 
      The definition of the error function in eqn. (5) [CPP] differs from the usual definition
      (see https://en.wikipedia.org/wiki/Error_function ):
@@ -291,7 +299,7 @@ __device__ void g_func(double x, int p_max, double *g) {
       - standard definition  erf(x) = 2/sqrt(pi) integral(exp(-t^2), t=0...z)
   */
   // sqrt(pi)
-  const double SQRT_PI = 2.0/M_2_SQRTPI;
+  const real SQRT_PI = (real) (2.0/M_2_SQRTPI);
   
   // initialization p=0
   g[0] = SQRT_PI * erf(sqrtx);
@@ -299,16 +307,17 @@ __device__ void g_func(double x, int p_max, double *g) {
   // upward iteration starting from p=0
   int p;
   // xp = x^(p+1/2) * exp(-x)
-  double xp = sqrtx * expmx;
+  real xp = sqrtx * expmx;
   for(p=0; p<p_max; p++) {
-    g[p+1] = -xp + (p+0.5)*g[p];
+    g[p+1] = -xp + (p+((real) 0.5))*g[p];
     xp *= x;
   }
 
   // returns nothing, result is in memory location pointed to by g
 }
 
-__device__ double m_func(double x) {
+template <typename real>
+__device__ real m_func(real x) {
   /*
     calculates
 
@@ -324,13 +333,13 @@ __device__ double m_func(double x) {
   large values of x.
   */
   // return value m*(x)
-  double m;
-  if (x >= 6.0) {
-    m = erf(x) * Dawson(x);
+  real m;
+  if (x >= (real) 6.0) {
+    m = erf(x) * Dawson<real>(x);
   } else {
     // hard-coded values m(xi) and m'(xi) at the expansion points
-    const double x0s[] = { 0., 0.5, 1., 1.5, 2., 2.5, 3., 3.5, 4., 4.5, 5., 5.5 };
-    const double m0s[] = {
+    const real x0s[] = { 0., 0.5, 1., 1.5, 2., 2.5, 3., 3.5, 4., 4.5, 5., 5.5 };
+    const real m0s[] = {
             0.0,
             0.1536288593561963,
             0.8153925207417932,
@@ -343,7 +352,7 @@ __device__ double m_func(double x) {
             7.107314602194292e7,
             7.354153746369724e9,
             1.269164846178781e12 };
-    const double m1s[] = {
+    const real m1s[] = {
             0.0,
             0.6683350724948156,
             2.290698252303238,
@@ -359,14 +368,14 @@ __device__ double m_func(double x) {
 
     // select the expansion point i if x0(i) <= x < x0(i+1)
     int i = (int) (2*x);
-    double x0 = x0s[i];
+    real x0 = x0s[i];
 
     // Taylor expansion is truncated after n_max+1 terms
     const int n_max = 20;
-    double m_deriv[n_max+1];
+    real m_deriv[n_max+1];
     m_deriv[0] = m0s[i];
     m_deriv[1] = m1s[i];
-    m_deriv[2] = 2*x0*m_deriv[1] + M_2_SQRTPI; // M_2_SQRTPI = 2/sqrt(pi)
+    m_deriv[2] = 2*x0*m_deriv[1] + ((real) M_2_SQRTPI); // M_2_SQRTPI = 2/sqrt(pi)
 
     /*
       compute derivatives of m(x) at the expansion point iteratively
@@ -380,9 +389,9 @@ __device__ double m_func(double x) {
     }
 
     // evaluate Taylor series
-    double dx = x-x0;
+    real dx = x-x0;
     // y holds (x-x0)^n / n!
-    double y = dx;   
+    real y = dx;   
     // accumulator
     m = m_deriv[0];
     for(n=1; n <= n_max; n++) {
@@ -396,7 +405,8 @@ __device__ double m_func(double x) {
   return m;
 }
 
-__device__ void h_func_large_x(double x, int p_min, int p_max, double h1_add, double *work, double *h) {
+template <typename real>
+__device__ void h_func_large_x(real x, int p_min, int p_max, real h1_add, real *work, real *h) {
   /*
     compute H(p,x) for small x
 
@@ -404,19 +414,19 @@ __device__ void h_func_large_x(double x, int p_min, int p_max, double h1_add, do
   */
   assert((p_min <= 0) && (p_max >= 0));
   int p, k;
-  double acc, y;
+  real acc, y;
   
   // 1) upward recursion for positive p
-  double sqrtx = sqrt(x);
-  double expmx = exp(-x);
+  real sqrtx = sqrt(x);
+  real expmx = exp(-x);
   // initial values for upward recursion:
   //   H(0,x) in eqn. (37b)
-  h[0] = (1.0/sqrtx) * erf(sqrtx) / M_2_SQRTPI;
+  h[0] = (1/sqrtx) * erf(sqrtx) / ((real) M_2_SQRTPI);
   if (p_max > 0) {
     //   H(1,x) in eqn. (37c) with correction `h1_add * exp(-x) = -1/2 log(a_mu) exp(-x)`
     // NOTE: m*(x) is modified to include the factor exp(-x^2), therefore
     //       exp(-x) m(sqrt(x)) = m*(sqrt(x))
-    h[1] = 2.0 / M_2_SQRTPI * m_func(sqrtx)  +  h1_add * expmx;
+    h[1] = ((real) (2.0 / M_2_SQRTPI)) * m_func<real>(sqrtx)  +  h1_add * expmx;
   }
   for(p=2; p <= p_max; p++) {
     // compute H(p,x) from H(p-1,x) and H(p-2,x)
@@ -425,9 +435,9 @@ __device__ void h_func_large_x(double x, int p_min, int p_max, double h1_add, do
   }
   
   // 2) For negative p we need gamma(k+1/2,x) for k=0,1,...,|p_min|
-  double *g = work;
+  real *g = work;
   // compute gamma integrals
-  g_func(x, -p_min, g);
+  g_func<real>(x, -p_min, g);
 
   /*
     eqn. (38)
@@ -435,7 +445,7 @@ __device__ void h_func_large_x(double x, int p_min, int p_max, double h1_add, do
      H(-p,x) = 1/(2 sqrt(x)) sum(k to p) binomial(p,k) (-1/x)   gamma(k+1/2,x)
              = 1/(2 sqrt(x)) sum(k to p) B_{p,k} g[k]
   */
-  double invmx = -1/x;
+  real invmx = -1/x;
   for(p=1; p <= -p_min; p++) {
     acc = 0.0;
     // y holds B_{p,k} = binomial(p,k) (-1/x)^k
@@ -443,16 +453,17 @@ __device__ void h_func_large_x(double x, int p_min, int p_max, double h1_add, do
     for(k=0; k <= p; k++) {
       acc += y * g[k];
       // B_{p,k+1} = (-1/x) (p-k)/(k+1) B_{p,k}
-      y *= invmx * (p-k)/(k+1.0);
+      y *= invmx * (p-k)/(k+((real) 1.0));
     }
-    acc *= 1.0/(2*sqrtx);
+    acc *= 1/(2*sqrtx);
 
     h[-p] = acc;
   }
   // returns nothing, results are in output array h
 }
 
-__device__ void h_func_small_x(double x, int p_min, int p_max, double h1_add, double *work, double *h) {
+template <typename real>
+__device__ void h_func_small_x(real x, int p_min, int p_max, real h1_add, real *work, real *h) {
   /*
     compute H(p,x) for small x
 
@@ -469,7 +480,7 @@ __device__ void h_func_small_x(double x, int p_min, int p_max, double h1_add, do
   */
   int k, p;
   const int k_max = 20;
-  double y, yk, h0;
+  real y, yk, h0;
   y = (-2*x);
   // yk = (-2x)^k / (2k)!!
   yk = y/2;
@@ -482,14 +493,14 @@ __device__ void h_func_small_x(double x, int p_min, int p_max, double h1_add, do
   h[0] = h0;
 
   // H(1,x), eqn. (37c)
-  double sqrtx, expmx;
+  real sqrtx, expmx;
   if (p_max > 0) {
     sqrtx = sqrt(x);
     expmx = exp(-x);
     //   H(1,x) in eqn. (37c) with correction `h1_add * exp(-x) = -1/2 log(a_mu) exp(-x)`
     // NOTE: m*(x) is modified to include the factor exp(-x^2), therefore
     //       exp(-x) m(sqrt(x)) = m*(sqrt(x))
-    h[1] = 2.0 / M_2_SQRTPI * m_func(sqrtx)  +  h1_add * expmx;
+    h[1] = ((real) (2.0 / M_2_SQRTPI)) * m_func<real>(sqrtx)  +  h1_add * expmx;
   }
   for(p=2; p <= p_max; p++) {
     // compute H(p,x) from H(p-1,x) and H(p-2,x)
@@ -498,31 +509,32 @@ __device__ void h_func_small_x(double x, int p_min, int p_max, double h1_add, do
   }
   
   // 2) for negative p we need \tilde{d}(k+1/2,-x) for k=0,1,...,|pmin|
-  double *d_tilde = work;
-  d_func_zero_limit(-x, 0, -p_min, 0.0, d_tilde);
+  real *d_tilde = work;
+  d_func_zero_limit<real>(-x, 0, -p_min, (real) 0.0, d_tilde);
   /*
     For small x we rewrite eqn. (38) as
                       p
      H(-p,x) = 1/2 sum    binom(p,k) (-1)^k \tilde{d}(k+1/2,-x)
                       k=0
   */
-  double acc;
+  real acc;
   for(p=1; p <= -p_min; p++) {
-    acc = 0.0;
+    acc = (real) 0.0;
     // y holds B_{p,k} = binomial(p,k) (-1)^k
     y = 1.0;
     for(k=0; k <= p; k++) {
       acc += y * d_tilde[k];
       // B_{p,k+1} = (-1) (p-k)/(k+1) B_{p,k}
-      y *= (-1) * (p-k)/(k+1.0);
+      y *= (-1) * (p-k)/(k+((real) 1.0));
     }
-    acc *= 0.5;
+    acc *= (real) 0.5;
     h[-p] = acc;
   }
   // returns nothing, output is in array h
 }
 
-__device__ void h_func(double x, int p_min, int p_max, double h1_add, double *work, double *h) {
+template <typename real>
+__device__ void h_func(real x, int p_min, int p_max, real h1_add, real *work, real *h) {
   /*
     evaluates the non-diverging part of the integral
 
@@ -580,25 +592,52 @@ __device__ void h_func(double x, int p_min, int p_max, double h1_add, double *wo
   */
   assert(x >= 0.0);
   // threshold for switching between two algorithms
-  const double x_small = 1.5;
+  const real x_small = 1.5;
   if (x < x_small) {
-    h_func_small_x(x, p_min, p_max, h1_add, work, h);
+    h_func_small_x<real>(x, p_min, p_max, h1_add, work, h);
   } else {
-    h_func_large_x(x, p_min, p_max, h1_add, work, h);
+    h_func_large_x<real>(x, p_min, p_max, h1_add, work, h);
   }
 }
 
 ////////////////// POLARIZATION INTEGRALS /////////////////////////
 
-__device__ PolarizationIntegral::PolarizationIntegral(
+template <typename real>
+__device__ real power(real x, int n) {
+  /*
+    x^n  for n >= -1
+   */
+  assert(n >= -1);
+  switch (n) {
+  case -1:
+    return ((real) 1.0) / x;
+  case 0: 
+    return (real) 1.0;
+  case 1:
+    return x;
+  case 2:
+    return x*x;
+  case 3:
+    return x*x*x;
+  default:
+    real p = 1.0;
+    for(int i = 0; i < n; i++) {
+      p *= x;
+    }
+    return p;
+  }
+}
+
+template <typename real>
+__device__ PolarizationIntegral<real>::PolarizationIntegral(
 		   // unnormalized Cartesian Gaussian phi_i(r) = (x-xi)^nxi (y-yi)^nyi (z-zi)^nzi exp(-beta_i * (r-ri)^2), total angular momentum is li = nxi+nyi+nzi
-		   double xi_, double yi_, double zi_,    int li_,  double beta_i_,
+		   real xi_, real yi_, real zi_,    int li_,  real beta_i_,
 		   // unnormalized Cartesian Gaussian phi_j(r) = (x-xj)^nxj (y-yj)^nyj (z-zj)^nzj exp(-beta_j * (r-rj)^2), the total angular momentum is lj = nxj+nyj+nzj
-		   double xj_, double yj_, double zj_,    int lj_,  double beta_j_,
+		   real xj_, real yj_, real zj_,    int lj_,  real beta_j_,
 		   // operator    O(r) = x^mx y^my z^mz |r|^-k 
 		   int k_,   int mx_, int my_, int mz_,
 		   // cutoff function F2(r) = (1 - exp(-alpha r^2))^q
-		   double alpha_, int q_ ) {
+		   real alpha_, int q_ ) {
   // initialize member variable with arguments
   xi = xi_; yi = yi_; zi = zi_;
   li = li_; beta_i = beta_i_;
@@ -612,7 +651,7 @@ __device__ PolarizationIntegral::PolarizationIntegral(
   by = beta_i*yi + beta_j*yj;
   bz = beta_i*zi + beta_j*zj;
   b = sqrt(bx*bx+by*by+bz*bz);
-  double ri2, rj2;
+  real ri2, rj2;
   ri2 = xi*xi+yi*yi+zi*zi;
   rj2 = xj*xj+yj*yj+zj*zj;
 
@@ -633,73 +672,73 @@ __device__ PolarizationIntegral::PolarizationIntegral(
          f[i+1] = (i+1/2) f[i]
   */
   // dynamic memory allocation
-  f = new double[l_max+1];
+  f = new real[l_max+1];
   
   f[0] = 1.0;
   f[1] = 0.5;
   int i;
   for (i=1; i < (l_max+1)/2; i++) {
-    f[i+1] = (i+0.5)*f[i];
+    f[i+1] = (i+((real) 0.5))*f[i];
   }
   
-  double w0 = beta_i * ri2 + beta_j * rj2;
+  real w0 = beta_i * ri2 + beta_j * rj2;
   // dynamically allocate zeroed memory 
-  integs = new double[s_max+1]();
+  integs = new real[s_max+1]();
 
-  double c = pow(M_PI,1.5)/tgamma(k/2.0);
+  real c = ((real) pow((real) M_PI,(real) 1.5))/tgamma(k/((real) 2.0));
   
-  double b2, b_pow, b2jm3;
+  real b2, b_pow, b2jm3;
   b2 = b*b;
-  b2jm3 = pow(b,2*j-3);
+  b2jm3 = power(b,2*j-3);
 
   // Variables for case 2, subcase 1
   // binom(s-j,nu)
-  double binom_smj_nu;
+  real binom_smj_nu;
   
   /*
     outer loop is
     sum_(mu to q) binomial(q,mu) (-1)^mu
   */
   int mu, p_min, p_max, s;
-  double a_mu, x, invx;
-  double a_mu_jm32, a_mu_pow; 
+  real a_mu, x, invx;
+  real a_mu_jm32, a_mu_pow; 
   
-  //double test_binom_nu;
-  double binom_jm1_nu, binom_j_nu;
+  //real test_binom_nu;
+  real binom_jm1_nu, binom_j_nu;
   int nu;
 
   // h1_add = -1/2 log(a_mu)
-  double h1_add;
+  real h1_add;
   
   // threshold for switching to implementation for small x = b^2/a_mu
-  const double x_small = 1.0e-2;
+  const real x_small = 1.0e-2;
   
   p_min = min(0, -j+1);
   p_max = s_max;
-  double *darr = new double[-p_min+p_max+1]();
+  real *darr = new real[-p_min+p_max+1]();
   // Shift pointer to array element for p=0, so that
   // the indices of d can be both positive or negative.
-  double *d = (darr-p_min);
+  real *d = (darr-p_min);
   // d and g are different names for the same memory location.
   // Depending on which case we are in, the array stores d(p+1/2,x) or g(p+1/2,x).
-  double *g = (darr-p_min);
+  real *g = (darr-p_min);
 
-  double *harr = new double[s_max+j+1]();
+  real *harr = new real[s_max+j+1]();
   // h[p] has elements at positions p=-s_max,...,j.
   // Shift pointer to array element for p=0, so that
   // the indices of d can be both positive or negative.
-  double *h = (harr-(-s_max));
+  real *h = (harr-(-s_max));
 
   // temporary work space
-  double *work = new double[max(-p_min+p_max+1,s_max+j+1)];
+  real *work = new real[max(-p_min+p_max+1,s_max+j+1)];
 
   /* 
      Precalculate unique integrals J
      The factor exp(-w0) = exp(-beta_i*ri^2 - beta_j*rj^2) is pulled into the integral 
   */
 
-  //double test_binom_mu = 0.0;
-  double binom_q_mu = 1.0;
+  //real test_binom_mu = 0.0;
+  real binom_q_mu = 1.0;
   for (mu=0; mu <= q; mu++) {
     // eqn. (15)
     a_mu = beta_i + beta_j + mu*alpha;
@@ -716,10 +755,10 @@ __device__ PolarizationIntegral::PolarizationIntegral(
 	   integs[s] = c  sum     binom(q,mu) (-1)    a          sum      binom(j-1,nu) (-1)    \tilde{d}(s-j+nu+1 + 1/2,x)
                              mu=0                      mu           nu=0                  
 	*/
-	a_mu_jm32 = pow(a_mu, j-1.5);
+	a_mu_jm32 = power(a_mu, j-1)/sqrt(a_mu);
 
 	// compute integrals \tilde{d}(p+1/2,x)
-	d_func_zero_limit(x, p_min, p_max, w0, d);
+	d_func_zero_limit<real>(x, p_min, p_max, w0, d);
 	// array d contains \tilde{d}_p = x^{-p-1/2} d_p
 
 	//test_binom_nu = 0.0;
@@ -740,7 +779,7 @@ __device__ PolarizationIntegral::PolarizationIntegral(
 	  
 	  // update binomial coefficients for next iteration
 	  //  B_{n,k+1} = x (n-k)/(k+1) B_{n,k}
-	  binom_jm1_nu *= ((-1) * (j-1-nu))/(nu + 1.0);
+	  binom_jm1_nu *= ((-1) * (j-1-nu))/(nu + ((real) 1.0));
 	}
 	//assert(abs(test_binom_nu - pow(1-1,j-1)) < 1.0e-10);
       } else {
@@ -748,7 +787,7 @@ __device__ PolarizationIntegral::PolarizationIntegral(
 	//print("Case 2: k=2*j+1 and x < x_small\n");
 	assert(k == 2*j+1);
 
-	double expx, expxmw0;
+	real expx, expxmw0;
 	if (s_max-j >= 0) {
 	  /* 
 	   compute integrals from Taylor expansion for small x
@@ -757,7 +796,7 @@ __device__ PolarizationIntegral::PolarizationIntegral(
 	                         = \tilde{d}(p+1/2, -x)
 
 	  */
-	  d_func_zero_limit(-x, 0, p_max, w0, d);
+	  d_func_zero_limit<real>(-x, 0, p_max, w0, d);
 	  // Now d[p] = \tilde{d}(p+1/2,-x)
 
 	  // the factor exp(-w0) is taken care of by d_func_zero_limit()
@@ -765,12 +804,12 @@ __device__ PolarizationIntegral::PolarizationIntegral(
 	}
 	if (s_min-j < 0) {
 	  expxmw0 = exp(x-w0);
-	  h1_add = -0.5 * log(a_mu);
+	  h1_add = ((real) -0.5) * log(a_mu);
 	  // compute integrals H(p,x)
-	  h_func(x, -s_max, j, h1_add, work, h);
+	  h_func<real>(x, -s_max, j, h1_add, work, h);
 	}
 	// a_mu^{j-s-1}
-	a_mu_pow = pow(a_mu, j-1);
+	a_mu_pow = power(a_mu, j-1);
 
 	for (s=0; s<=s_max; s++) {
 	  if (s < s_min) {
@@ -798,7 +837,7 @@ __device__ PolarizationIntegral::PolarizationIntegral(
 	      //assert(abs(a_mu_pow - pow(a_mu, j-s-1)) < 1.0e-10);
 	      
 	      // update binomial coefficient
-	      binom_smj_nu *= ((-1) * (s-j-nu))/(nu + 1.0);
+	      binom_smj_nu *= ((-1) * (s-j-nu))/(nu + ((real) 1.0));
 	    }
 	    //assert(abs(test_binom_nu - pow(1-1,s-j)) < 1.0e-10);
 	  } else {
@@ -826,7 +865,7 @@ __device__ PolarizationIntegral::PolarizationIntegral(
 	      //assert(abs(a_mu_pow - pow(a_mu, j-s-1)) < 1.0e-10);
 	      
 	      // update binomial coefficient
-	      binom_j_nu *= ((-1) * (j-nu))/(nu + 1.0);
+	      binom_j_nu *= ((-1) * (j-nu))/(nu + ((real) 1.0));
 	    }
 	    //assert(abs(test_binom_nu - pow(1-1, j)) < 1.0e-10);
 	  }
@@ -837,7 +876,7 @@ __device__ PolarizationIntegral::PolarizationIntegral(
     } else {
       //print("x >= x_small\n");
       /* x > x_small */
-      invx = 1.0/x;
+      invx = 1/x;
     
       if (k % 2 == 0) {
 	//print("Case 1: k=2*j and x >= x_small\n");
@@ -848,7 +887,7 @@ __device__ PolarizationIntegral::PolarizationIntegral(
                              mu=0                                     nu=0                   b^2                        a
 	*/
 	// compute integrals d(p+1/2,x)
-	d_func(x, p_min, p_max, w0, d);
+	d_func<real>(x, p_min, p_max, w0, d);
 	
 	//test_binom_nu = 0.0;
 	binom_jm1_nu = 1.0;
@@ -867,7 +906,7 @@ __device__ PolarizationIntegral::PolarizationIntegral(
 	  
 	  // update binomial coefficients for next iteration
 	  //  B_{n,k+1} = x (n-k)/(k+1) B_{n,k}
-	  binom_jm1_nu *= ((-invx) * (j-1-nu))/(nu + 1.0);
+	  binom_jm1_nu *= ((-invx) * (j-1-nu))/(nu + ((real) 1.0));
 	}
 	//assert(abs(test_binom_nu - pow(1 - invx, j-1)) < 1.0e-10);
       } else {
@@ -877,17 +916,18 @@ __device__ PolarizationIntegral::PolarizationIntegral(
 
 	if (s_max-j >= 0) {
 	  // compute integrals gamma(p+1/2,x)
-	  g_func(x, p_max, g);
+	  g_func<real>(x, p_max, g);
 	}
 	if (s_min-j < 0) {
-	  h1_add = -0.5 * log(a_mu);
+	  h1_add = ((real) -0.5) * log(a_mu);
 	  // compute integrals H(p,x)
-	  h_func(x, -s_max, j, h1_add, work, h);
+	  h_func<real>(x, -s_max, j, h1_add, work, h);
 	}
-	double expxmw0 = exp(x-w0);
-	double powinvx_expxmw0 = pow(invx, j+0.5) * expxmw0;
+	real expxmw0 = exp(x-w0);
+	real sqrtx = sqrt(x);
+	real powinvx_expxmw0 = power(invx, j) / sqrtx * expxmw0;
 	// a_mu^{j-s-1}
-	a_mu_pow = pow(a_mu, j-1);
+	a_mu_pow = power(a_mu, j-1);
 
 	for (s=0; s<=s_max; s++) {
 	  if (s < s_min) {
@@ -915,7 +955,7 @@ __device__ PolarizationIntegral::PolarizationIntegral(
 	      //assert(abs(a_mu_pow - pow(a_mu, j-s-1)) < 1.0e-10);
 	      
 	      // update binomial coefficient
-	      binom_smj_nu *= ((-invx) * (s-j-nu))/(nu + 1.0);
+	      binom_smj_nu *= ((-invx) * (s-j-nu))/(nu + ((real) 1.0));
 	    }
 	    //assert(abs(test_binom_nu - pow(1-invx, s-j)) < 1.0e-10);
 	  } else {
@@ -943,7 +983,7 @@ __device__ PolarizationIntegral::PolarizationIntegral(
 	      //assert(abs(a_mu_pow - pow(a_mu, j-s-1)) < 1.0e-10);
 	      
 	      // update binomial coefficient
-	      binom_j_nu *= ((-1) * (j-nu))/(nu + 1.0);
+	      binom_j_nu *= ((-1) * (j-nu))/(nu + ((real) 1.0));
 	    }
 	    //assert(abs(test_binom_nu - pow(1-1, j)) < 1.0e-10);
 	  }
@@ -954,7 +994,7 @@ __device__ PolarizationIntegral::PolarizationIntegral(
     //test_binom_mu += binom_q_mu;
     
     // update binomial coefficient
-    binom_q_mu *= ((-1)*(q-mu))/(mu + 1.0);
+    binom_q_mu *= ((-1)*(q-mu))/(mu + ((real) 1.0));
   } // end of loop over mu
 
   // release memory
@@ -966,35 +1006,37 @@ __device__ PolarizationIntegral::PolarizationIntegral(
   //assert(abs(test_binom_mu - pow(1-1,q)) < 1.0e-10);
 }
 
-__device__ PolarizationIntegral::~PolarizationIntegral() {
+template <typename real>
+__device__ PolarizationIntegral<real>::~PolarizationIntegral() {
   // release memory
   delete[] f;
   delete[] integs;
 }
 
-__device__ double PolarizationIntegral::compute_pair(int nxi, int nyi, int nzi,
-						     int nxj, int nyj, int nzj) {
+template <typename real>
+__device__ real PolarizationIntegral<real>::compute_pair(int nxi, int nyi, int nzi,
+							 int nxj, int nyj, int nzj) {
   int eta_xi, eta_xj, eta_yi, eta_yj, eta_zi, eta_zj;
   // binom_xi_pow = binomial(nxi,eta_xi) (-xi)^(nxi - eta_xi)
-  double binom_xi_pow, binom_xj_pow, binom_yi_pow, binom_yj_pow, binom_zi_pow, binom_zj_pow;
+  real binom_xi_pow, binom_xj_pow, binom_yi_pow, binom_yj_pow, binom_zi_pow, binom_zj_pow;
   int lx, ly, lz;
   // products of binomial coefficients and powers of centers
-  double fxx, fxxyy, fxxyyzz;
+  real fxx, fxxyy, fxxyyzz;
 
   // binom_bx_pow = binomial(lx,zeta_x) bx^(lx - zeta_x)
-  double binom_bx_pow, binom_by_pow, binom_bz_pow;
+  real binom_bx_pow, binom_by_pow, binom_bz_pow;
   int zeta_x, zeta_y, zeta_z;
   // products of binomial coefficients and powers of centers
-  double gxy, gxyz;
+  real gxy, gxyz;
   // If zeta_x is even, then even_x = true
   bool even_x, even_y, even_z;
 
   // accumulates polarization integrals
-  double op = 0.0;
+  real op = 0.0;
 
   // Variables beginning with test_... are only needed for the consistency of the code
   // and can be removed later.
-  //double test_binomial_6, test_binomial_3;
+  //real test_binomial_6, test_binomial_3;
 
   // maximum values for lx,ly,lz
   int lx_max, ly_max, lz_max, l_max_;
@@ -1077,26 +1119,26 @@ __device__ double PolarizationIntegral::compute_pair(int nxi, int nyi, int nzi,
 		    
 		    // update binomial coefficients for next iteration
 		    //  B_{n,k-1} = x k / (n-k+1) B_{n,k}
-		    binom_bz_pow *= (bz * zeta_z)/(lz - zeta_z + 1.0);
+		    binom_bz_pow *= (bz * zeta_z)/(lz - zeta_z + ((real) 1.0));
 		  }
-		  binom_by_pow *= (by * zeta_y)/(ly - zeta_y + 1.0);
+		  binom_by_pow *= (by * zeta_y)/(ly - zeta_y + ((real) 1.0));
 		}
-		binom_bx_pow *= (bx * zeta_x)/(lx - zeta_x + 1.0);
+		binom_bx_pow *= (bx * zeta_x)/(lx - zeta_x + ((real) 1.0));
 	      }
 	      //assert(abs(test_binomial_3 - pow(1+bx,lx)*pow(1+by,ly)*pow(1+bz,lz))/abs(test_binomial_3) < 1.0e-10);	      	      
 	      // update binomial coefficients for next iteration
 	      //  B_{n,k-1} = x k / (n-k+1) B_{n,k}
-	      binom_zj_pow *= ((-zj) * eta_zj)/(nzj - eta_zj + 1.0);
+	      binom_zj_pow *= ((-zj) * eta_zj)/(nzj - eta_zj + ((real) 1.0));
 	    }
-	    binom_zi_pow *= ((-zi) * eta_zi)/(nzi - eta_zi + 1.0);
+	    binom_zi_pow *= ((-zi) * eta_zi)/(nzi - eta_zi + ((real) 1.0));
 	  }
-	  binom_yj_pow *= ((-yj) * eta_yj)/(nyj - eta_yj + 1.0);
+	  binom_yj_pow *= ((-yj) * eta_yj)/(nyj - eta_yj + ((real) 1.0));
 	}
-	binom_yi_pow *= ((-yi) * eta_yi)/(nyi - eta_yi + 1.0);
+	binom_yi_pow *= ((-yi) * eta_yi)/(nyi - eta_yi + ((real) 1.0));
       }
-      binom_xj_pow *= ((-xj) * eta_xj)/(nxj - eta_xj + 1.0);
+      binom_xj_pow *= ((-xj) * eta_xj)/(nxj - eta_xj + ((real) 1.0));
     }
-    binom_xi_pow *= ((-xi) * eta_xi)/(nxi - eta_xi + 1.0);
+    binom_xi_pow *= ((-xi) * eta_xi)/(nxi - eta_xi + ((real) 1.0));
   }
   // consistency check
   //assert(abs(test_binomial_6 - pow(1-xi,nxi)*pow(1-yi,nyi)*pow(1-zi,nzi) * pow(1-xj,nxj)*pow(1-yj,nyj)*pow(1-zj,nzj))/abs(test_binomial_6) < 1.0e-10);
@@ -1129,17 +1171,18 @@ inline __device__ const AtomicOrbital *ao_ordering(int angl) {
   }
 }
 
+template <typename real>
 __global__ void polarization_prim_pairs_kernel(
 		  // array of pairs of primitives
-                  const PrimitivePair *pairs,
+                  const PrimitivePair<real> *pairs,
 		  // number of pairs, length of array `pairs`
 		  int npair,
 		  // output
-		  double *buffer,
+		  real *buffer,
 		  // operator    O(r) = x^mx y^my z^mz |r|^-k 
 		  int k, int mx, int my, int mz,
 		  // cutoff function F2(r) = (1 - exp(-alpha r^2))^q
-		  double alpha,  int q) {
+		  real alpha,  int q) {
   /*
     AO polarization integrals for pairs of primitives
 
@@ -1156,20 +1199,20 @@ __global__ void polarization_prim_pairs_kernel(
     // This thread has nothing to do
     return;
   }
-  PrimitivePair pair = pairs[ipair];
+  PrimitivePair<real> pair = pairs[ipair];
 
-  Primitive *primA = &(pair.primA);
-  Primitive *primB = &(pair.primB);
+  Primitive<real> *primA = &(pair.primA);
+  Primitive<real> *primB = &(pair.primB);
 
   // The coordinate system is assumed to have been shifted so that the 
   // polarizable site lies at the origin.
 
   // Polarization integrals can reuse data if angular momentum quantum numbers
   // L(I)=angmomI and L(J)=angmomJ do not change. 
-  PolarizationIntegral integrals(primA->x, primA->y, primA->z, primA->l, primA->exp,
-				 primB->x, primB->y, primB->z, primB->l, primB->exp,
-				 k, mx,my,mz,
-				 alpha, q);
+  PolarizationIntegral<real> integrals(primA->x, primA->y, primA->z, primA->l, primA->exp,
+				       primB->x, primB->y, primB->z, primB->l, primB->exp,
+				       k, mx,my,mz,
+				       alpha, q);
 
   // number of angular momenta
   int num_angmomA = ANGL_FUNCS(primA->l);
@@ -1179,7 +1222,7 @@ __global__ void polarization_prim_pairs_kernel(
   const AtomicOrbital *aosA = ao_ordering(primA->l);
   const AtomicOrbital *aosB = ao_ordering(primB->l);
 
-  double cc = primA->coef * primB->coef;
+  real cc = primA->coef * primB->coef;
 
   // The integrals should be placed in the buffer at the positions
   //   bufferIdx, bufferIdx + 1, ..., bufferIdx + num_angomA * num_angmomB
@@ -1203,18 +1246,19 @@ inline int kappa(int n) {
   }
 }
 
-#define BLOCK_SIZE (16*16)
+#define BLOCK_SIZE (8*8)
 
+template <typename real>
 void polarization_prim_pairs(// pointer to array of pairs of primitives in GPU memory
-			   const PrimitivePair *pairs,
-			   // number of pairs
-			   int npair,
-			   // pointer to output buffer in GPU memory
-			   double *buffer,
-			   // operator    O(r) = x^mx y^my z^mz |r|^-k 
-			   int k, int mx, int my, int mz,
-			   // cutoff function F2(r) = (1 - exp(-alpha r^2))^q
-			   double alpha,  int q) {
+			     const PrimitivePair<real> *pairs,
+			     // number of pairs
+			     int npair,
+			     // pointer to output buffer in GPU memory
+			     real *buffer,
+			     // operator    O(r) = x^mx y^my z^mz |r|^-k 
+			     int k, int mx, int my, int mz,
+			     // cutoff function F2(r) = (1 - exp(-alpha r^2))^q
+			     real alpha,  int q) {
   assert("Integrals are only implemented for the case k > 2!" && k > 2);
   // check that exponent of operator k and cutoff power q are compatible, otherwise the integrals
   // do not exist
@@ -1224,26 +1268,43 @@ void polarization_prim_pairs(// pointer to array of pairs of primitives in GPU m
   int blockDim = BLOCK_SIZE;
   int gridDim  = (npair + blockDim - 1)/blockDim;
   // launch kernel
-  polarization_prim_pairs_kernel<<<gridDim,blockDim>>>(pairs, npair, 
-						       buffer, 
-						       k, mx, my, mz,
-						       alpha, q);
+  polarization_prim_pairs_kernel<real><<<gridDim,blockDim>>>(pairs, npair, 
+							     buffer, 
+							     k, mx, my, mz,
+							     alpha, q);
   CHECK_CUDA_ERR();
 }
 
+// templates for double and single precision
+template void polarization_prim_pairs<double>(const PrimitivePair<double> *pairs,
+					      int npair,
+					      double *buffer,
+					      int k, int mx, int my, int mz,
+					      double alpha, int q);
+template void polarization_prim_pairs<float>(const PrimitivePair<float> *pairs,
+					     int npair,
+					     float *buffer,
+					     int k, int mx, int my, int mz,
+					     float alpha, int q);
+
+template <typename real>
 int integral_buffer_size(// array of pairs of primitives
-			 const PrimitivePair *pairs,
+			 const PrimitivePair<real> *pairs,
 			 // number of pairs in array
 			 int npair) {
   /* compute the size of the buffer to hold all polarization integrals */
   int buffer_size = 0;
   // loop over all pairs of primitives
   for(int ipair = 0; ipair < npair; ipair++) {
-    const PrimitivePair *pair = pairs+ipair;
-    const Primitive *primA = &(pair->primA);
-    const Primitive *primB = &(pair->primB);
+    const PrimitivePair<real> *pair = pairs+ipair;
+    const Primitive<real> *primA = &(pair->primA);
+    const Primitive<real> *primB = &(pair->primB);
     // Increase buffer by the amount needed for this pair, all combinations of angular momenta
     buffer_size += ANGL_FUNCS(primA->l) * ANGL_FUNCS(primB->l);
   }
   return buffer_size;
 }
+
+// templates for double and single precision
+template int integral_buffer_size<double>(const PrimitivePair<double> *pairs, int npair);
+template int integral_buffer_size<float>(const PrimitivePair<float> *pairs, int npair);

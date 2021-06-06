@@ -7,18 +7,35 @@
 #include <pybind11/stl.h>
 #include <vector>
 
+// By default this code is compiled for double precision. To switch to single precision
+// define the macro SINGLE_PRECISION.
+// The python module will be called _polarization_gpu.so or _polarization_gpu_sp.so 
+// depending on the precision of the floating point data type.
+
+#ifdef SINGLE_PRECISION
+#  define REAL_TYPE float
+#  define MODULE_NAME _polarization_gpu_sp
+#else
+#  define REAL_TYPE double
+#  define MODULE_NAME _polarization_gpu
+#endif
+
+// Note that here `REAL` is a data type, while `real` is a template parameter.
+typedef REAL_TYPE REAL;
+
 #include "polarization.h"
 
 namespace py = pybind11;
 using namespace pybind11::literals;
 
-std::vector<double> polarization_prim_pairs_wrapper(
+template <typename real>
+std::vector<real> polarization_prim_pairs_wrapper(
 				     // array of pairs of primitives
-				     const std::vector<PrimitivePair> &pairs_vector,
+                                     const std::vector<PrimitivePair<real>> &pairs_vector,
 				     // operator    O(r) = x^mx y^my z^mz |r|^-k 
 				     int k, int mx, int my, int mz,
 				     // cutoff function F2(r) = (1 - exp(-alpha r^2))^q
-				     double alpha,  int q) {
+				     real alpha,  int q) {
   // This code only works on a GPU, check if we have one available.
   int count;
   cudaError_t err;
@@ -27,31 +44,31 @@ std::vector<double> polarization_prim_pairs_wrapper(
     throw std::runtime_error("No CUDA device found!");
   }
   // access underlying data of primitive pairs
-  const PrimitivePair *pairs = pairs_vector.data();
+  const PrimitivePair<real> *pairs = pairs_vector.data();
   int npair = pairs_vector.size();
   // determine size of buffer for integrals
-  int buffer_size = integral_buffer_size(pairs, pairs_vector.size());
+  int buffer_size = integral_buffer_size<real>(pairs, pairs_vector.size());
   // integrals are stored in this buffer
-  std::vector<double> buffer_vector(buffer_size);
-  double *buffer = buffer_vector.data();
+  std::vector<real> buffer_vector(buffer_size);
+  real *buffer = buffer_vector.data();
 
   // allocate memory for pairs of primitives on GPU
-  PrimitivePair *pairs_;
-  cudaMalloc((void **) &pairs_, sizeof(PrimitivePair) * npair);
+  PrimitivePair<real> *pairs_;
+  cudaMalloc((void **) &pairs_, sizeof(PrimitivePair<real>) * npair);
   // copy primitive data to device
-  cudaMemcpy(pairs_, pairs, sizeof(PrimitivePair) * npair,  cudaMemcpyHostToDevice);
+  cudaMemcpy(pairs_, pairs, sizeof(PrimitivePair<real>) * npair,  cudaMemcpyHostToDevice);
 
   // allocate memory for integrals on the GPU
-  double *buffer_;
-  cudaMalloc((void **) &buffer_, sizeof(double) * buffer_size);
+  real *buffer_;
+  cudaMalloc((void **) &buffer_, sizeof(real) * buffer_size);
 
   // do the integrals
-  polarization_prim_pairs(pairs_, npair,
-			  buffer_,
-			  k, mx, my, mz, alpha, q);
-
+  polarization_prim_pairs<real>(pairs_, npair,
+				buffer_,
+				k, mx, my, mz, alpha, q);
+  
   // copy integrals from GPU to CPU
-  cudaMemcpy(buffer, buffer_, sizeof(double) * buffer_size,  cudaMemcpyDeviceToHost);
+  cudaMemcpy(buffer, buffer_, sizeof(real) * buffer_size,  cudaMemcpyDeviceToHost);
 
   // release dynamic memory on GPU
   cudaFree(pairs_);
@@ -61,11 +78,10 @@ std::vector<double> polarization_prim_pairs_wrapper(
   return buffer_vector;
 }
 
-
-PYBIND11_MODULE(_polarization_gpu, m) {
-  py::class_<Primitive>(m, "Primitive")
-    .def(py::init<double, double, int, 
-	 double, double, double, int>(),
+PYBIND11_MODULE(MODULE_NAME, m) {
+  py::class_<Primitive<REAL>>(m, "Primitive")
+    .def(py::init<REAL, REAL, int, 
+	 REAL, REAL, REAL, int>(),
 	 R"LITERAL(
 Gaussian-type primitive basis function
 
@@ -85,16 +101,16 @@ shellIdx :   int >= 0
 )LITERAL",
 	 "coef"_a, "exp"_a, "l"_a,
 	 "x"_a, "y"_a, "z"_a, "shellIdx"_a)
-    .def_readwrite("coef", &Primitive::coef)
-    .def_readwrite("exp",  &Primitive::exp)
-    .def_readwrite("l",    &Primitive::l)
-    .def_readwrite("x",    &Primitive::x)
-    .def_readwrite("y",    &Primitive::y)
-    .def_readwrite("z",    &Primitive::z)
-    .def_readwrite("shellIdx", &Primitive::shellIdx);
+    .def_readwrite("coef", &Primitive<REAL>::coef)
+    .def_readwrite("exp",  &Primitive<REAL>::exp)
+    .def_readwrite("l",    &Primitive<REAL>::l)
+    .def_readwrite("x",    &Primitive<REAL>::x)
+    .def_readwrite("y",    &Primitive<REAL>::y)
+    .def_readwrite("z",    &Primitive<REAL>::z)
+    .def_readwrite("shellIdx", &Primitive<REAL>::shellIdx);
 
-  py::class_<PrimitivePair>(m, "PrimitivePair")
-    .def(py::init<Primitive, Primitive, int>(),
+  py::class_<PrimitivePair<REAL>>(m, "PrimitivePair")
+    .def(py::init<Primitive<REAL>, Primitive<REAL>, int>(),
 	 R"LITERAL(
 A pair of Gaussian-type primitives for which polarization integrals should be calculated.
 
@@ -112,11 +128,11 @@ bufferIdx :  int >= 0
 
 )LITERAL",
 	 "primA"_a, "primB"_a, "bufferIdx"_a)
-    .def_readwrite("primA",     &PrimitivePair::primA)
-    .def_readwrite("primB",     &PrimitivePair::primB)
-    .def_readwrite("bufferIdx", &PrimitivePair::bufferIdx);
+    .def_readwrite("primA",     &PrimitivePair<REAL>::primA)
+    .def_readwrite("primB",     &PrimitivePair<REAL>::primB)
+    .def_readwrite("bufferIdx", &PrimitivePair<REAL>::bufferIdx);
 
-  m.def("polarization_prim_pairs", &polarization_prim_pairs_wrapper, 
+  m.def("polarization_prim_pairs", &polarization_prim_pairs_wrapper<REAL>, 
 	R"LITERAL(
 compute AO polarization integrals for pairs of primitives on the GPU
 

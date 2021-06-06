@@ -20,9 +20,9 @@ int main() {
   int npair = 100000;
 
   // allocate memory for pairs of primitives
-  PrimitivePair *pairs, *pairs_;
-  pairs = (PrimitivePair *) malloc(sizeof(PrimitivePair) * npair);
-  cudaMalloc((void **) &pairs_, sizeof(PrimitivePair) * npair);
+  PrimitivePair<double> *pairs, *pairs_;
+  pairs = (PrimitivePair<double> *) malloc(sizeof(PrimitivePair<double>) * npair);
+  cudaMalloc((void **) &pairs_, sizeof(PrimitivePair<double>) * npair);
 
   // random numbers
   std::random_device rd;    //Will be used to obtain a seed for the random number engine
@@ -33,9 +33,9 @@ int main() {
   int buffer_size = 0;
   // create random pairs of primitives
   for(int ipair = 0; ipair < npair; ipair++) {
-    PrimitivePair *pair = pairs+ipair;
-    Primitive *primA = &(pair->primA);
-    Primitive *primB = &(pair->primB);
+    PrimitivePair<double> *pair = pairs+ipair;
+    Primitive<double> *primA = &(pair->primA);
+    Primitive<double> *primB = &(pair->primB);
 
     if (ipair == 0) {
       // For these parameters we know the exact integrals, just a quick check
@@ -74,9 +74,9 @@ int main() {
     buffer_size += ANGL_FUNCS(primA->l) * ANGL_FUNCS(primB->l);
   }
 
-  printf("number of integrals : %d  %d\n", buffer_size, integral_buffer_size(pairs, npair));
+  printf("number of integrals : %d  %d\n", buffer_size, integral_buffer_size<double>(pairs, npair));
   // copy primitive data to device
-  cudaMemcpy(pairs_, pairs, sizeof(PrimitivePair) * npair,  cudaMemcpyHostToDevice);
+  cudaMemcpy(pairs_, pairs, sizeof(PrimitivePair<double>) * npair,  cudaMemcpyHostToDevice);
 
   // allocate memory for integrals
   double *buffer, *buffer_;
@@ -85,10 +85,10 @@ int main() {
 
   cudaProfilerStart();
   // compute integrals
-  polarization_prim_pairs(pairs_, npair, 
-			  buffer_, 
-			  k, mx, my, mz,
-			  alpha, q);
+  polarization_prim_pairs<double>(pairs_, npair, 
+				  buffer_, 
+				  k, mx, my, mz,
+				  alpha, q);
   cudaProfilerStop();
   
   // copy integrals back
