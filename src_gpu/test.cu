@@ -44,8 +44,8 @@ int main() {
   // allocate memory on host for pairs of primitives
 # ifdef PINNED_MEMORY
   // allocate pinned memory on host for pairs of primitives
-  int mem_bytes = sizeof(PrimitivePair<real>) * npair;
-  printf("Allocate pinned host memory of %d Kb = %d Mb = %d Gb \n",  
+  long int mem_bytes = sizeof(PrimitivePair<real>) * npair;
+  printf("Allocate pinned host memory of %ld Kb = %ld Mb = %ld Gb \n",  
 	 (mem_bytes >> 10), 
 	 (mem_bytes >> 20),
 	 (mem_bytes >> 30));
@@ -114,7 +114,7 @@ int main() {
 # ifdef PINNED_MEMORY
   // allocate pinned host memory for integrals
   mem_bytes = sizeof(real) * buffer_size;
-  printf("Allocate pinned host memory of %d Kb = %d Mb = %d Gb \n",  
+  printf("Allocate pinned host memory of %ld Kb = %ld Mb = %ld Gb \n",  
 	 (mem_bytes >> 10), 
 	 (mem_bytes >> 20),
 	 (mem_bytes >> 30));

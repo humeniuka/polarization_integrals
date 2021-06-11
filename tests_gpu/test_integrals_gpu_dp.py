@@ -98,7 +98,7 @@ class TestGPUIntegrals(unittest.TestCase):
         ##### compute integrals on the GPU ########
 
         tstart = time.time()
-        integrals_gpu = polarization_prim_pairs(pairs, k, mx,my,mz, alpha, q)
+        integrals_gpu = np.array( polarization_prim_pairs(pairs, k, mx,my,mz, alpha, q) )
         tend = time.time()
         print("GPU integrals took %f seconds" % (tend-tstart))
 

@@ -99,7 +99,8 @@ class TestGPUIntegrals(unittest.TestCase):
         ##### compute integrals on the GPU ########
 
         tstart = time.time()
-        integrals_gpu = polarization_prim_pairs(pairs, k, mx,my,mz, alpha, q)
+        integrals_gpu = np.array( polarization_prim_pairs(pairs, k, mx,my,mz, alpha, q) )
+
         tend = time.time()
         print("GPU integrals took %f seconds" % (tend-tstart))
 
@@ -141,10 +142,19 @@ class TestGPUIntegrals(unittest.TestCase):
         print("CPU (last few integrals)")
         print(integrals_cpu[-5:])
 
-        max_err = abs(integrals_gpu - integrals_cpu).max()
+        # absolute error
+        max_abs_err = abs(integrals_gpu - integrals_cpu).max()
+        # relative error for those integrals with absolute values > 10e-8
+        idx = abs(integrals_cpu) > 1.0e-8
+        max_rel_err = ( abs(integrals_gpu[idx] - integrals_cpu[idx])/abs(integrals_cpu[idx]) ).max()
 
-        print(f"max|Integrals(GPU)-Integrals(CPU)| = {max_err}")
-        self.assertLess(max_err, 1.0e-10)
+        print( "absolute error")
+        print(f"  max |Integrals(GPU)-Integrals(CPU)|                  = {max_abs_err}")
+        print( "relative error")
+        print(f"  max |Integrals(GPU)-Integrals(CPU)|/|Integrals(CPU)| = {max_rel_err}")
+
+        self.assertLess(max_abs_err, 1.0e-10)
+        self.assertLess(max_rel_err, 1.0e-10)
 
 if __name__ == '__main__':
     unittest.main()

@@ -36,16 +36,6 @@ std::vector<real> polarization_prim_pairs_wrapper(
 				     int k, int mx, int my, int mz,
 				     // cutoff function F2(r) = (1 - exp(-alpha r^2))^q
 				     real alpha,  int q) {
-  // This code only works on a GPU, check if we have one available.
-  /*
-  int count;
-  cudaError_t err;
-  err = cudaGetDeviceCount(&count);
-  if ((err != cudaSuccess) || (count == 0)) {
-    fprintf(stderr, "CUDA Runtime Error: %s\n", cudaGetErrorString(err));
-    throw std::runtime_error("Couldn't start CUDA or didn't find CUDA device!");
-  }
-  */
   // access underlying data of primitive pairs
   const PrimitivePair<real> *pairs = pairs_vector.data();
   int npair = pairs_vector.size();
@@ -59,7 +49,7 @@ std::vector<real> polarization_prim_pairs_wrapper(
 
   /**** BEGIN of automatically generated code (with code_generator.py) *****/
   // highest value that any of the integers (k-3), mx, my, mz and (q-2) can take
-  const int N = 3;
+  const int N = 8; // should be more than enough
   // The index of the template instance for <...,k,mx,my,mz,q>
   int template_instance = (k-3)*N*N*N*N + mx*N*N*N + my*N*N + mz*N + q-2;
   switch (template_instance) {
