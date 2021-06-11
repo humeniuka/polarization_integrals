@@ -17,7 +17,7 @@
 #  define MODULE_NAME _polarization_gpu_sp
 #else
 #  define REAL_TYPE double
-#  define MODULE_NAME _polarization_gpu
+#  define MODULE_NAME _polarization_gpu_dp
 #endif
 
 // Note that here `REAL` is a data type, while `real` is a template parameter.
@@ -37,12 +37,15 @@ std::vector<real> polarization_prim_pairs_wrapper(
 				     // cutoff function F2(r) = (1 - exp(-alpha r^2))^q
 				     real alpha,  int q) {
   // This code only works on a GPU, check if we have one available.
+  /*
   int count;
   cudaError_t err;
   err = cudaGetDeviceCount(&count);
   if ((err != cudaSuccess) || (count == 0)) {
-    throw std::runtime_error("No CUDA device found!");
+    fprintf(stderr, "CUDA Runtime Error: %s\n", cudaGetErrorString(err));
+    throw std::runtime_error("Couldn't start CUDA or didn't find CUDA device!");
   }
+  */
   // access underlying data of primitive pairs
   const PrimitivePair<real> *pairs = pairs_vector.data();
   int npair = pairs_vector.size();
@@ -52,28 +55,48 @@ std::vector<real> polarization_prim_pairs_wrapper(
   std::vector<real> buffer_vector(buffer_size);
   real *buffer = buffer_vector.data();
 
-  // allocate memory for pairs of primitives on GPU
-  PrimitivePair<real> *pairs_;
-  cudaMalloc((void **) &pairs_, sizeof(PrimitivePair<real>) * npair);
-  // copy primitive data to device
-  cudaMemcpy(pairs_, pairs, sizeof(PrimitivePair<real>) * npair,  cudaMemcpyHostToDevice);
+  // TODO: needed to created pinned memory for input and output
 
-  // allocate memory for integrals on the GPU
-  real *buffer_;
-  cudaMalloc((void **) &buffer_, sizeof(real) * buffer_size);
+  /**** BEGIN of automatically generated code (with code_generator.py) *****/
+  // highest value that any of the integers (k-3), mx, my, mz and (q-2) can take
+  const int N = 3;
+  // The index of the template instance for <...,k,mx,my,mz,q>
+  int template_instance = (k-3)*N*N*N*N + mx*N*N*N + my*N*N + mz*N + q-2;
+  switch (template_instance) {
 
-  // do the integrals
-  polarization_prim_pairs<real>(pairs_, npair,
-				buffer_,
-				k, mx, my, mz, alpha, q);
-  
-  // copy integrals from GPU to CPU
-  cudaMemcpy(buffer, buffer_, sizeof(real) * buffer_size,  cudaMemcpyDeviceToHost);
+  // Op(r) = 1/|r|^3
+  case 0:
+    polarization_prim_pairs<real, 3, 0,0,0, 2>(pairs, npair, buffer, alpha); break;
 
-  // release dynamic memory on GPU
-  cudaFree(pairs_);
-  cudaFree(buffer_);
-  
+  // Op(r) = 1/|r|^4
+  case 81:
+    polarization_prim_pairs<real, 4, 0,0,0, 2>(pairs, npair, buffer, alpha); break;
+
+  // Op(r) = r(i)/|r|^3
+  case 3:
+    polarization_prim_pairs<real, 3, 0,0,1, 2>(pairs, npair, buffer, alpha); break;
+  case 9:
+    polarization_prim_pairs<real, 3, 0,1,0, 2>(pairs, npair, buffer, alpha); break;
+  case 27:
+    polarization_prim_pairs<real, 3, 1,0,0, 2>(pairs, npair, buffer, alpha); break;
+
+  // Op(r) = r(i)r(j)/|r|^6
+  case 249:
+    polarization_prim_pairs<real, 6, 0,0,2, 2>(pairs, npair, buffer, alpha); break;
+  case 255:
+    polarization_prim_pairs<real, 6, 0,1,1, 2>(pairs, npair, buffer, alpha); break;
+  case 261:
+    polarization_prim_pairs<real, 6, 0,2,0, 2>(pairs, npair, buffer, alpha); break;
+  case 273:
+    polarization_prim_pairs<real, 6, 1,0,1, 2>(pairs, npair, buffer, alpha); break;
+  case 279:
+    polarization_prim_pairs<real, 6, 1,1,0, 2>(pairs, npair, buffer, alpha); break;
+  case 297:
+    polarization_prim_pairs<real, 6, 2,0,0, 2>(pairs, npair, buffer, alpha); break;
+  default:
+    throw std::runtime_error("No template instance found for this combination of k, mx,my,mz, q ! Add it and recompile. ");
+  }
+  /**** END of automatically generated code *****/
 
   return buffer_vector;
 }

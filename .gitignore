@@ -10,8 +10,11 @@ __pychache__/
 # ignore emacs backup files
 *~
 \#*\#
+.\#*
 
 # executables
 *.x
 # Nvidia profiler output
 *.nvprof
+# intermediate compiled CUDA code (PTX)
+*.ptx

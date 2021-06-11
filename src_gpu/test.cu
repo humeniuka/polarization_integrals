@@ -9,33 +9,64 @@
 
 #include "polarization.h"
 
+#ifdef SINGLE_PRECISION
+typedef float real;
+#else
+typedef double real;
+#endif
+
+// Check if there has been a CUDA error.
+// Convenience function for checking CUDA runtime API results
+// can be wrapped around any runtime API call. No-op in release builds.
+inline
+cudaError_t checkCuda(cudaError_t err)
+{
+#if defined(DEBUG) || defined(_DEBUG)
+  if (err != cudaSuccess) {
+    fprintf(stderr, "CUDA Runtime Error: %s, file %s\n", cudaGetErrorString(err), __FILE__);
+    assert(err == cudaSuccess);
+  }
+#endif
+  return err;
+}
+
 int main() {
-  int k = 3;
-  int mx = 0;
-  int my = 0;
-  int mz = 0;
-  double alpha = 50.0;
-  int q = 2;
+  const int k = 3;
+  const int mx = 0;
+  const int my = 0;
+  const int mz = 0;
+  real alpha = 50.0;
+  const int q = 2;
 
-  int npair = 100000;
+  int npair = 16000000;
 
-  // allocate memory for pairs of primitives
-  PrimitivePair<double> *pairs, *pairs_;
-  pairs = (PrimitivePair<double> *) malloc(sizeof(PrimitivePair<double>) * npair);
-  cudaMalloc((void **) &pairs_, sizeof(PrimitivePair<double>) * npair);
+  PrimitivePair<real> *pairs;
+  // allocate memory on host for pairs of primitives
+# ifdef PINNED_MEMORY
+  // allocate pinned memory on host for pairs of primitives
+  int mem_bytes = sizeof(PrimitivePair<real>) * npair;
+  printf("Allocate pinned host memory of %d Kb = %d Mb = %d Gb \n",  
+	 (mem_bytes >> 10), 
+	 (mem_bytes >> 20),
+	 (mem_bytes >> 30));
+  checkCuda( cudaMallocHost((void**) &pairs, sizeof(PrimitivePair<real>) * npair) ); 
+# else
+  pairs = (PrimitivePair<real> *) malloc(sizeof(PrimitivePair<real>) * npair);
+# endif
 
   // random numbers
   std::random_device rd;    //Will be used to obtain a seed for the random number engine
   std::mt19937 random(rd());  //Standard mersenne_twister_engine seeded with rd()
   std::uniform_real_distribution<> distribution(0.0, 2.0);
 
+  printf("Generate random primitive pairs\n");
   // determine size of output buffer to accomodate all combinations of angular momenta
   int buffer_size = 0;
   // create random pairs of primitives
   for(int ipair = 0; ipair < npair; ipair++) {
-    PrimitivePair<double> *pair = pairs+ipair;
-    Primitive<double> *primA = &(pair->primA);
-    Primitive<double> *primB = &(pair->primB);
+    PrimitivePair<real> *pair = pairs+ipair;
+    Primitive<real> *primA = &(pair->primA);
+    Primitive<real> *primB = &(pair->primB);
 
     if (ipair == 0) {
       // For these parameters we know the exact integrals, just a quick check
@@ -57,6 +88,7 @@ int main() {
       primA->coef = distribution(random);
       primA->exp  = distribution(random) + 0.01;
       primA->l    = 1;   // p-orbital
+      //primA->l    = 0;     // s-orbital
       primA->x    = distribution(random);
       primA->y    = distribution(random);
       primA->z    = distribution(random);
@@ -64,6 +96,7 @@ int main() {
       primB->coef = distribution(random);
       primB->exp  = distribution(random) + 0.01;
       primB->l    = 2;  // d-orbital
+      //primB->l    = 0;    // s-orbital
       primB->x    = distribution(random);
       primB->y    = distribution(random);
       primB->z    = distribution(random);
@@ -74,25 +107,29 @@ int main() {
     buffer_size += ANGL_FUNCS(primA->l) * ANGL_FUNCS(primB->l);
   }
 
-  printf("number of integrals : %d  %d\n", buffer_size, integral_buffer_size<double>(pairs, npair));
-  // copy primitive data to device
-  cudaMemcpy(pairs_, pairs, sizeof(PrimitivePair<double>) * npair,  cudaMemcpyHostToDevice);
+  printf("number of integrals : %d  %d\n", buffer_size, integral_buffer_size<real>(pairs, npair));
 
-  // allocate memory for integrals
-  double *buffer, *buffer_;
-  buffer = (double *) malloc(sizeof(double) * buffer_size);
-  cudaMalloc((void **) &buffer_, sizeof(double) * buffer_size);
+  real *buffer;
+  // allocate host memory for integral
+# ifdef PINNED_MEMORY
+  // allocate pinned host memory for integrals
+  mem_bytes = sizeof(real) * buffer_size;
+  printf("Allocate pinned host memory of %d Kb = %d Mb = %d Gb \n",  
+	 (mem_bytes >> 10), 
+	 (mem_bytes >> 20),
+	 (mem_bytes >> 30));
+  checkCuda( cudaMallocHost((void**)&buffer, sizeof(real) * buffer_size) ); 
+# else
+  buffer = (real *) malloc(sizeof(real) * buffer_size);
+# endif
 
   cudaProfilerStart();
   // compute integrals
-  polarization_prim_pairs<double>(pairs_, npair, 
-				  buffer_, 
-				  k, mx, my, mz,
-				  alpha, q);
+  polarization_prim_pairs<real, k, mx, my, mz, q>(pairs, npair, 
+						  buffer, 
+						  alpha);
   cudaProfilerStop();
   
-  // copy integrals back
-  cudaMemcpy(buffer, buffer_, sizeof(double) * buffer_size,  cudaMemcpyDeviceToHost);
   printf("buffer[0]= %f\n", buffer[0]);
 
   /*
@@ -101,11 +138,15 @@ int main() {
   }
   */
 
+# ifdef PINNED_MEMORY
+  // release dynamic pinned memory
+  cudaFreeHost(pairs);
+  cudaFreeHost(buffer);
+# else
   // release dynamic memory
   free(pairs);
-  cudaFree(pairs_);
   free(buffer);
-  cudaFree(buffer_);
+# endif
 
   printf("DONE\n");
 }

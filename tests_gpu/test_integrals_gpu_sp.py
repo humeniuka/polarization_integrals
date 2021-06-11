@@ -1,9 +1,9 @@
 #!/usr/bin/env python
 """
-Polarization integrals are computed on the CPU and GPU (with double precision) and are compared.
+Polarization integrals are computed on the CPU (with double precision) and GPU (with single precision) and are compared.
 
 To profile the GPU kernel use
- $ nvprof --metrics achieved_occupancy,branch_efficiency -fo log_dp.nvprof python test_integrals_gpu.py
+ $ nvprof --metrics achieved_occupancy,branch_efficiency,flop_count_sp,flop_count_dp,flop_sp_efficiency,flop_dp_efficiency -fo log_sp.nvprof python test_integrals_gpu_sp.py
 """
 import time
 import numpy as np
@@ -13,9 +13,10 @@ import unittest
 
 # try to import GPU implementation of integrals
 try:
-    from polarization_integrals._polarization_gpu import Primitive, PrimitivePair, polarization_prim_pairs
+    # load moduel compiled for single precision
+    from polarization_integrals._polarization_gpu_sp import Primitive, PrimitivePair, polarization_prim_pairs
 except ImportError as e:
-    print("NOTE: The module _polarization_gpu requires a GPU! It can be compiled by running `make` inside the folder src_gpu/ .")
+    print("NOTE: The module _polarization_gpu_sp requires a GPU! It can be compiled by running `make` inside the folder src_gpu/ .")
     raise e
 
 # import CPU implementation
@@ -86,7 +87,7 @@ class TestGPUIntegrals(unittest.TestCase):
     def test_compare_with_CPU(self):
         """compare GPU with CPU integrals"""
         # random pair of primitives
-        pairs = random_pair_list(n=1000000)
+        pairs = random_pair_list(n=1000) #000)
 
         # polarization operator Op = x/r^3
         k = 3
@@ -126,9 +127,15 @@ class TestGPUIntegrals(unittest.TestCase):
                     ij += 1
             tend = time.time()
 
-        print("CPU integrals (with double precision) took %f seconds" % (tend-tstart))
+        print("CPU integrals (with single precision) took %f seconds" % (tend-tstart))
             
         ###### compare GPU and CPU integrals ######
+
+        print("GPU (first few integrals)")
+        print(integrals_gpu[:5])
+        print("CPU (first few integrals)")
+        print(integrals_cpu[:5])
+
         print("GPU (last few integrals)")
         print(integrals_gpu[-5:])
         print("CPU (last few integrals)")
