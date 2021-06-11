@@ -743,8 +743,6 @@ __device__ PolarizationIntegral<real, li, lj, k, mx, my, mz, q>::PolarizationInt
   }
   
   real w0 = beta_i * ri2 + beta_j * rj2;
-  // dynamically allocate zeroed memory 
-  //integs = new real[s_max+1]();
   // memset is not needed, integs is automatically initialized to 0.
   //memset(integs, 0.0, (s_max+1)*sizeof(real));
 
@@ -778,7 +776,6 @@ __device__ PolarizationIntegral<real, li, lj, k, mx, my, mz, q>::PolarizationInt
   // threshold for switching to implementation for small x = b^2/a_mu
   const real x_small = 1.0e-2;
   
-  //real *darr = new real[-p_min+p_max+1]();
   real darr[-p_min+p_max+1];
   // memset is not needed because array is automatically initialized to 0
   //memset(darr, 0.0, (-p_min+p_max+1)*sizeof(real));
@@ -789,7 +786,6 @@ __device__ PolarizationIntegral<real, li, lj, k, mx, my, mz, q>::PolarizationInt
   // Depending on which case we are in, the array stores d(p+1/2,x) or g(p+1/2,x).
   real *g = (darr-p_min);
 
-  //real *harr = new real[s_max+j+1]();
   real harr[S_MAX+J+1];
   // memset is not needed because array is automatically initialized to 0.
   //memset(harr, 0.0, (s_max+j+1)*sizeof(real));
@@ -799,7 +795,6 @@ __device__ PolarizationIntegral<real, li, lj, k, mx, my, mz, q>::PolarizationInt
   real *h = (harr-(-s_max));
 
   // temporary work space
-  //real *work = new real[max(-p_min+p_max+1,s_max+j+1)];
   real work[Max(-P_MIN+P_MAX+1, S_MAX+J+1)];
 
   /* 
@@ -1067,13 +1062,6 @@ __device__ PolarizationIntegral<real, li, lj, k, mx, my, mz, q>::PolarizationInt
     binom_q_mu *= ((-1)*(q-mu))/(mu + ((real) 1.0));
   } // end of loop over mu
 
-  /* REMOVE
-  // release memory
-  delete[] darr;
-  delete[] harr;
-  delete[] work;
-  */
-
   // 0 = (1-1)^q = sum_{mu=0}^q binom(q,mu) (-1)^mu
   //assert(abs(test_binom_mu - pow(1-1,q)) < 1.0e-10);
 }
@@ -1086,11 +1074,6 @@ template <typename real,
     // power of cutoff function F2(r) = (1 - exp(-alpha r^2))^q
     int q  >
 __device__ PolarizationIntegral<real, li, lj, k, mx, my, mz, q>::~PolarizationIntegral() {
-  /* REMOVE
-  // release memory
-  delete[] f;
-  delete[] integs;
-  */
 }
 
 template <typename real,

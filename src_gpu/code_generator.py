@@ -117,8 +117,8 @@ def runtime_template_selection():
     The generated code has to be inserted in `polarization_prim_pairs_wrapper()`.
     """
     # highest value that any of the integers (k-3), mx, my, mz and (q-2) 
-    # can take, 8 should be more than enough
-    N = 8
+    # can take, 4 should be more than enough
+    N = 4
     code = f"""
   /**** BEGIN of automatically generated code (with code_generator.py) *****/
   // highest value that any of the integers (k-3), mx, my, mz and (q-2) can take

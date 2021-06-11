@@ -45,11 +45,9 @@ std::vector<real> polarization_prim_pairs_wrapper(
   std::vector<real> buffer_vector(buffer_size);
   real *buffer = buffer_vector.data();
 
-  // TODO: needed to created pinned memory for input and output
-
   /**** BEGIN of automatically generated code (with code_generator.py) *****/
   // highest value that any of the integers (k-3), mx, my, mz and (q-2) can take
-  const int N = 8; // should be more than enough
+  const int N = 4;
   // The index of the template instance for <...,k,mx,my,mz,q>
   int template_instance = (k-3)*N*N*N*N + mx*N*N*N + my*N*N + mz*N + q-2;
   switch (template_instance) {
@@ -59,29 +57,29 @@ std::vector<real> polarization_prim_pairs_wrapper(
     polarization_prim_pairs<real, 3, 0,0,0, 2>(pairs, npair, buffer, alpha); break;
 
   // Op(r) = 1/|r|^4
-  case 81:
+  case 256:
     polarization_prim_pairs<real, 4, 0,0,0, 2>(pairs, npair, buffer, alpha); break;
 
   // Op(r) = r(i)/|r|^3
-  case 3:
+  case 4:
     polarization_prim_pairs<real, 3, 0,0,1, 2>(pairs, npair, buffer, alpha); break;
-  case 9:
+  case 16:
     polarization_prim_pairs<real, 3, 0,1,0, 2>(pairs, npair, buffer, alpha); break;
-  case 27:
+  case 64:
     polarization_prim_pairs<real, 3, 1,0,0, 2>(pairs, npair, buffer, alpha); break;
 
   // Op(r) = r(i)r(j)/|r|^6
-  case 249:
+  case 776:
     polarization_prim_pairs<real, 6, 0,0,2, 2>(pairs, npair, buffer, alpha); break;
-  case 255:
+  case 788:
     polarization_prim_pairs<real, 6, 0,1,1, 2>(pairs, npair, buffer, alpha); break;
-  case 261:
+  case 800:
     polarization_prim_pairs<real, 6, 0,2,0, 2>(pairs, npair, buffer, alpha); break;
-  case 273:
+  case 836:
     polarization_prim_pairs<real, 6, 1,0,1, 2>(pairs, npair, buffer, alpha); break;
-  case 279:
+  case 848:
     polarization_prim_pairs<real, 6, 1,1,0, 2>(pairs, npair, buffer, alpha); break;
-  case 297:
+  case 896:
     polarization_prim_pairs<real, 6, 2,0,0, 2>(pairs, npair, buffer, alpha); break;
   default:
     throw std::runtime_error("No template instance found for this combination of k, mx,my,mz, q ! Add it and recompile. ");
