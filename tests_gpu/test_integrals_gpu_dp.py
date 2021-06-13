@@ -21,10 +21,12 @@ except ImportError as e:
 # import CPU implementation
 from polarization_integrals import PolarizationIntegral
 
+from errors import group_errors_by_angmom
+
 def random_primitive(l):
     """Gaussian primitive of angular momentum l with random parameters"""
     # exponent has to be positive
-    exp, = 0.01 + 2.0*np.random.rand(1)
+    exp, = 0.001 + 2.0*np.random.rand(1)
     coef, x, y, z, = 2.0*(np.random.rand(4)-0.5)
     # shellIdx not needed
     shellIdx = 0
@@ -43,15 +45,27 @@ def random_pair_list(n=1000):
     -------
     pairs :  list of PrimitivePair
     """
+    # make random numbers reproducible
+    np.random.seed(0)
+
     # up to d-functions
     lmax = 2
     
     pairs = []
     buffer_size = 0
+
+    # As an additional check, the first pair of primitives is not random. 
+    # Both primitives are s-orbitals with exponent 1.0 centered at origin.
+    primA = Primitive(1.0, 1.0, 0, 0.0, 0.0, 0.0,  0)
+    primB = Primitive(1.0, 1.0, 0, 0.0, 0.0, 0.0,  0)
+    pair = PrimitivePair(primA, primB, 0)
+    pairs.append(pair)
+    buffer_size += 1
+
     # primitives should be sorted by angular momenta to avoid warp divergence
-    for lA in range(0, lmax):
+    for lA in range(0, lmax+1):
         num_angmomA = ((lA+1)*(lA+2))//2
-        for lB in range(0, lmax):
+        for lB in range(0, lmax+1):
             num_angmomB = ((lB+1)*(lB+2))//2
             for ipair in range(0, n):
                 primA = random_primitive(lA)
@@ -86,7 +100,7 @@ class TestGPUIntegrals(unittest.TestCase):
     def test_compare_with_CPU(self):
         """compare GPU with CPU integrals"""
         # random pair of primitives
-        pairs = random_pair_list(n=1000000)
+        pairs = random_pair_list(n=1000)
 
         # polarization operator Op = x/r^3
         k = 3
@@ -129,15 +143,28 @@ class TestGPUIntegrals(unittest.TestCase):
         print("CPU integrals (with double precision) took %f seconds" % (tend-tstart))
             
         ###### compare GPU and CPU integrals ######
+
+        print("GPU (first few integrals)")
+        print(integrals_gpu[:5])
+        print("CPU (first few integrals)")
+        print(integrals_cpu[:5])
+
         print("GPU (last few integrals)")
         print(integrals_gpu[-5:])
         print("CPU (last few integrals)")
         print(integrals_cpu[-5:])
 
-        max_err = abs(integrals_gpu - integrals_cpu).max()
+        print("")
+        print("Errors of GPU (double precision) relative to CPU (double precision) implementation")
+        group_errors_by_angmom(pairs, integrals_gpu, integrals_cpu)
+        
+        # absolute error
+        max_abs_err = abs(integrals_gpu - integrals_cpu).max()
 
-        print(f"max|Integrals(GPU)-Integrals(CPU)| = {max_err}")
-        self.assertLess(max_err, 1.0e-10)
+        print( "absolute error")
+        print(f"  max |Integrals(GPU)-Integrals(CPU)|                  = {max_abs_err}")
+
+        self.assertLess(max_abs_err, 1.0e-8)
 
 if __name__ == '__main__':
     unittest.main()

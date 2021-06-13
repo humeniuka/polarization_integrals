@@ -4,6 +4,7 @@
 #include <ctime>
 #include <sys/time.h>
 #include <random>
+#include <assert.h>
 
 #include <cuda_profiler_api.h>
 

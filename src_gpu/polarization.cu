@@ -273,7 +273,7 @@ __device__ void d_func_zero_limit(real x, const int p_min, const int p_max, real
 }
 
 template <typename real>
-__device__ void g_func(real x, const int p_max, real *g) {
+__device__ void g_func_OLD(real x, const int p_max, real *g) {
   /*
     evaluates the integral
 
@@ -320,6 +320,67 @@ __device__ void g_func(real x, const int p_max, real *g) {
 
   // returns nothing, result is in memory location pointed to by g
 }
+
+template <typename real>
+__device__ void g_func(real x_, const int p_max, real *g) {
+  /*
+    evaluates the integral
+
+                          /x      p-1/2
+        gamma(p+1/2, x) = |  dw  w      exp(-w)
+                          /0
+
+    iteratively for all p=0,1,...,pmax. The closed-form expression for gamma is given in eqn. (33) in [CPP].
+
+    Arguments
+    ----------
+    x    :  double >= 0
+      upper integration limit
+    pmax :  int >= 0
+      integral is evaluated for all integers p=0,1,...,pmax
+    g    :  pointer to first element of doubly array of size pmax+1
+      The integrals gamma(p+1/2,x) are stored in g in the order p=0,1,...,pmax
+  */
+  // Internally this function uses double precision. The elements of the array g[] 
+  // differ by several orders of magnitude so that the necessary precision is lost when
+  // computing and adding consecutive elements in single precision.
+  // For s- and p-functions the single precision version would be enough, but for d-functions
+  // only the first few elements of g[] are correct.
+  double x = (double) x_;
+  assert(p_max >= 0);
+  // constants during iteration
+  //double sqrtx = sqrt(x);
+  double sqrtx = (double) sqrt(x);
+  double expmx = exp(-x);
+  /* 
+     The definition of the error function in eqn. (5) [CPP] differs from the usual definition
+     (see https://en.wikipedia.org/wiki/Error_function ):
+
+      - eqn. (5)             erf(x) = integral(exp(-t^2), t=0...z)
+      - standard definition  erf(x) = 2/sqrt(pi) integral(exp(-t^2), t=0...z)
+  */
+  // sqrt(pi)
+  const double SQRT_PI = 2.0/M_2_SQRTPI;
+  
+  // initialization p=0
+  double g0 = SQRT_PI * erf(sqrtx);
+  g[0] = (real) g0;
+
+  // upward iteration starting from p=0
+  int p;
+  
+  double xp = sqrtx * expmx;
+  double gp = g0;
+  for(p=0; p<p_max; p++) {
+    //g[p+1] = -xp + (p+0.5)*g[p];
+    gp = -xp + (p+0.5)*gp;
+    g[p+1] = (real) gp;
+    xp *= x;
+  }
+
+  // returns nothing, result is in memory location pointed to by g
+}
+
 
 // constants needed by m_func(...)
 //
@@ -466,7 +527,8 @@ __device__ void h_func_large_x(real x, const int p_min, const int p_max, real h1
   */
   assert((p_min <= 0) && (p_max >= 0));
   int p, k;
-  real acc, y;
+  real y;
+  real acc;
   
   // 1) upward recursion for positive p
   real sqrtx = sqrt(x);
@@ -898,6 +960,12 @@ __device__ PolarizationIntegral<real, li, lj, k, mx, my, mz, q>::PolarizationInt
 	      assert(j+nu <= s_max);
 	      integs[s] += c * binom_q_mu * a_mu_pow * expx * binom_smj_nu * d[j+nu];
 
+	      // DEBUG
+	      print("binom_q_mu= %f  a_mu_pow= %f  expx= %f  binom_smj_nu= %f  d[%d]= %f\n", 
+		    binom_q_mu, a_mu_pow, expx, binom_smj_nu, j+nu, d[j+nu]);
+	      print("integ[%d] = %f\n", s, integs[s]);
+	      //
+
 	      //test_binom_nu += binom_smj_nu;
 	      //assert(abs(a_mu_pow - pow(a_mu, j-s-1)) < 1.0e-10);
 	      
@@ -939,12 +1007,12 @@ __device__ PolarizationIntegral<real, li, lj, k, mx, my, mz, q>::PolarizationInt
 	} // end loop over s
       }
     } else {
-      //print("x >= x_small\n");
+      print("x >= x_small\n");
       /* x > x_small */
       invx = 1/x;
     
       if (k % 2 == 0) {
-	//print("Case 1: k=2*j and x >= x_small\n");
+	print("Case 1: k=2*j and x >= x_small\n");
 	// Case 1: k=2*j, eqn. (22)
 	/*
 	                     q                    mu   -2*s+2*j-3     j-1                     a   nu                   b^2
@@ -1015,6 +1083,13 @@ __device__ PolarizationIntegral<real, li, lj, k, mx, my, mz, q>::PolarizationInt
 	    for(nu=0; nu <= s-j; nu++) {
 	      assert(j+nu <= s_max);
 	      integs[s] += c * binom_q_mu * a_mu_pow * powinvx_expxmw0 * binom_smj_nu * g[j+nu];
+
+	      // DEBUG
+	      print("binom_q_mu= %f  a_mu_pow= %f  powinvx_expxmw0= %f  binom_smj_nu= %f  g[%d]= %e\n", 
+		    binom_q_mu, a_mu_pow, powinvx_expxmw0, binom_smj_nu, j+nu, g[j+nu]);
+	      print("integ[%d] = %e\n", s, integs[s]);
+	      print("added = %e\n", c * binom_q_mu * a_mu_pow * powinvx_expxmw0 * binom_smj_nu * g[j+nu]);
+	      //
 
 	      //test_binom_nu += binom_smj_nu;
 	      //assert(abs(a_mu_pow - pow(a_mu, j-s-1)) < 1.0e-10);
@@ -1275,7 +1350,6 @@ __global__ void polarization_prim_pairs_kernel(
 
    See header file for more information.
   */
-  print("start polarization_prim_pairs_kernel\n");
   // Each thread in a linear grid handles one pair of primitives
   int ipair = blockIdx.x * blockDim.x + threadIdx.x;
   if (ipair >= npair) {

@@ -8,7 +8,7 @@
 // use pinned memory to overlap kernel computation and data transfer
 #define PINNED_MEMORY
 // threads per block
-#define BLOCK_SIZE (512)
+#define BLOCK_SIZE (64)
 
 //////////////////// DEBUG options /////////////////////////////////////
 #undef DEBUG
@@ -178,11 +178,6 @@ class PolarizationIntegral {
 
   real integs[S_MAX+1];
   real f[L_MAX+1];
-
-  /* REMOVE
-  //real *integs;
-  //real *f;
-  */
 
  public:
   // constructor

@@ -4,13 +4,18 @@
 # compilers
 NVCC := nvcc
 NVCXX := gcc
-# architecture and compute capability (here GeForce GTX TITAN X)
-CUARCH := -gencode=arch=compute_52,code=sm_52
-NVLINK := -arch=sm_52
+## architecture and compute capability 
+## GeForce GTX TITAN X
+#CUARCH := -gencode=arch=compute_52,code=sm_52
+#NVLINK := -arch=sm_52
+## 1080ti
+CUARCH := -gencode=arch=compute_61,code=sm_61
+NVLINK := -arch=sm_61
 # 
 NVCXXFLAGS := -Wall -fPIC -O2 -DMKL_ILP64
 NVCUFLAGS := -O2 -use_fast_math -std=c++11 -ccbin $(NVCXX) $(CUARCH) \
-	-maxrregcount=63 --ptxas-options=-v --verbose --resource-usage
+	-maxrregcount=63 --ptxas-options=-v --verbose --resource-usage \
+	-Xptxas --disable-optimizer-constants
 ####################################################################################
 
 # pybind11
