@@ -1,4 +1,3 @@
-
 #ifndef _polarization_integrals_h
 #define _polarization_integrals_h
 
@@ -8,7 +7,7 @@
 // use pinned memory to overlap kernel computation and data transfer
 #define PINNED_MEMORY
 // threads per block
-#define BLOCK_SIZE (64)
+#define BLOCK_SIZE (512)
 
 //////////////////// DEBUG options /////////////////////////////////////
 #undef DEBUG
