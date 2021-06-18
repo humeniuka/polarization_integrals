@@ -33,10 +33,10 @@ cudaError_t checkCuda(cudaError_t err)
 
 int main() {
   const int k = 3;
-  const int mx = 0;
+  const int mx = 1;
   const int my = 0;
   const int mz = 0;
-  real alpha = 50.0;
+  real alpha = 4.0;
   const int q = 2;
 
   int npair = 16000000;
@@ -84,6 +84,21 @@ int main() {
       primB->x    = 0.0;
       primB->y    = 0.0;
       primB->z    = 0.0;
+    } else if (ipair == 1) {
+      // Another check with parameters for which we know the right result
+      primA->coef = -0.0507585;
+      primA->exp = 0.63629;
+      primA->l = 0;
+      primA->x = -11.3384;
+      primA->y = 0.0;
+      primA->z = 0.0;
+
+      primB->coef = -0.288858;
+      primB->exp = 6.4648;
+      primB->l = 0;        
+      primB->x = -7.5589;
+      primB->y = 0.0; 
+      primB->z = 0.0;
     } else {
       // random parameters
       primA->coef = distribution(random);
@@ -131,7 +146,8 @@ int main() {
 						  alpha);
   cudaProfilerStop();
   
-  printf("buffer[0]= %f\n", buffer[0]);
+  printf("buffer[0]= %e\n", buffer[0]);
+  printf("buffer[1]= %e\n", buffer[1]);
 
   /*
   for(int i = 0; i < buffer_size; i++) {

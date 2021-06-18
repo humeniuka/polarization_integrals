@@ -58,7 +58,6 @@ Alexander Humeniuk  (alexander.humeniuk@gmail.com)
 
 #include <stdio.h>
 #include <stdexcept>
-#include <type_traits> // for std::is_same
 
 #include <cuda.h>
 #include <cuda_runtime.h>
@@ -469,7 +468,7 @@ __device__ real m_func(real x) {
     real x0;
     // load constants with different precision based on data type (one of the
     // branches should be eliminated at compile time.)
-    if (std::is_same<real, float>::value) {
+    if (sizeof(real) == sizeof(float)) {
       x0 = x0s_sp[i];
     } else {
       x0 = x0s_dp[i];
@@ -481,7 +480,7 @@ __device__ real m_func(real x) {
     real m_deriv[n_max+1];
     // load constants with different precision based on data type (one of the
     // branches should be eliminated at compile time.)
-    if (std::is_same<real, float>::value) {
+    if (sizeof(real) == sizeof(float)) {
       m_deriv[0] = m0s_sp[i];
       m_deriv[1] = m1s_sp[i];
     } else {
@@ -805,8 +804,8 @@ __device__ PolarizationIntegral<real, li, lj, k, mx, my, mz, q>::PolarizationInt
   }
   
   real w0 = beta_i * ri2 + beta_j * rj2;
-  // memset is not needed, integs is automatically initialized to 0.
-  //memset(integs, 0.0, (s_max+1)*sizeof(real));
+  // memset is actually needed, since integs is not automatically initialized to 0.
+  memset(integs, 0.0, (s_max+1)*sizeof(real));
 
   real c = ((real) pow((real) M_PI,(real) 1.5))/tgamma(k/((real) 2.0));
   
@@ -960,12 +959,6 @@ __device__ PolarizationIntegral<real, li, lj, k, mx, my, mz, q>::PolarizationInt
 	      assert(j+nu <= s_max);
 	      integs[s] += c * binom_q_mu * a_mu_pow * expx * binom_smj_nu * d[j+nu];
 
-	      // DEBUG
-	      print("binom_q_mu= %f  a_mu_pow= %f  expx= %f  binom_smj_nu= %f  d[%d]= %f\n", 
-		    binom_q_mu, a_mu_pow, expx, binom_smj_nu, j+nu, d[j+nu]);
-	      print("integ[%d] = %f\n", s, integs[s]);
-	      //
-
 	      //test_binom_nu += binom_smj_nu;
 	      //assert(abs(a_mu_pow - pow(a_mu, j-s-1)) < 1.0e-10);
 	      
@@ -1083,13 +1076,6 @@ __device__ PolarizationIntegral<real, li, lj, k, mx, my, mz, q>::PolarizationInt
 	    for(nu=0; nu <= s-j; nu++) {
 	      assert(j+nu <= s_max);
 	      integs[s] += c * binom_q_mu * a_mu_pow * powinvx_expxmw0 * binom_smj_nu * g[j+nu];
-
-	      // DEBUG
-	      print("binom_q_mu= %f  a_mu_pow= %f  powinvx_expxmw0= %f  binom_smj_nu= %f  g[%d]= %e\n", 
-		    binom_q_mu, a_mu_pow, powinvx_expxmw0, binom_smj_nu, j+nu, g[j+nu]);
-	      print("integ[%d] = %e\n", s, integs[s]);
-	      print("added = %e\n", c * binom_q_mu * a_mu_pow * powinvx_expxmw0 * binom_smj_nu * g[j+nu]);
-	      //
 
 	      //test_binom_nu += binom_smj_nu;
 	      //assert(abs(a_mu_pow - pow(a_mu, j-s-1)) < 1.0e-10);
@@ -1296,7 +1282,7 @@ __device__ real PolarizationIntegral<real, li, lj, k, mx, my, mz, q>::compute_pa
   }
   // consistency check
   //assert(abs(test_binomial_6 - pow(1-xi,nxi)*pow(1-yi,nyi)*pow(1-zi,nzi) * pow(1-xj,nxj)*pow(1-yj,nyj)*pow(1-zj,nzj))/abs(test_binomial_6) < 1.0e-10);
-
+  
   return op;
 }
 
@@ -1352,204 +1338,205 @@ __global__ void polarization_prim_pairs_kernel(
   */
   // Each thread in a linear grid handles one pair of primitives
   int ipair = blockIdx.x * blockDim.x + threadIdx.x;
-  if (ipair >= npair) {
-    // This thread has nothing to do
-    return;
+
+  if (ipair < npair) {
+    PrimitivePair<real> pair = pairs[ipair];
+
+    Primitive<real> *primA = &(pair.primA);
+    Primitive<real> *primB = &(pair.primB);
+
+    // The coordinate system is assumed to have been shifted so that the 
+    // polarizable site lies at the origin.
+    
+    // Polarization integrals can reuse data if angular momentum quantum numbers
+    // L(I)=angmomI and L(J)=angmomJ do not change. 
+    
+    const int lA = primA->l;
+    const int lB = primB->l;
+
+    real cc = primA->coef * primB->coef;
+
+    // The integrals should be placed in the buffer at the positions
+    //   bufferIdx, bufferIdx + 1, ..., bufferIdx + num_angomA * num_angmomB
+    int ij = pair.bufferIdx;
+    
+    // unrolled loops over all angular momentum components (lA,mA,nA) of primitive A
+    // and all angular momentum components (lB,mB,nB) of primitive B
+    /**** BEGIN of automatically generated code (with code_generator.py) *****/
+    if (lA == 0) {
+      if (lB == 0) {
+	// ss integrals
+	PolarizationIntegral<real, 0, 0, k, mx, my, mz, q> integrals
+	  (primA->x, primA->y, primA->z, primA->exp,
+	   primB->x, primB->y, primB->z, primB->exp,
+	   alpha);
+
+	buffer[ij+ 0* 1+ 0] = cc * integrals.template compute_pair<0,0,0, 0,0,0>();
+      } else if (lB == 1) {
+	// sp integrals
+	PolarizationIntegral<real, 0, 1, k, mx, my, mz, q> integrals
+	  (primA->x, primA->y, primA->z, primA->exp,
+	   primB->x, primB->y, primB->z, primB->exp,
+	   alpha);
+	
+	buffer[ij+ 0* 3+ 0] = cc * integrals.template compute_pair<0,0,0, 1,0,0>();
+	buffer[ij+ 0* 3+ 1] = cc * integrals.template compute_pair<0,0,0, 0,1,0>();
+	buffer[ij+ 0* 3+ 2] = cc * integrals.template compute_pair<0,0,0, 0,0,1>();
+      } else if (lB == 2) {
+	// sd integrals
+	PolarizationIntegral<real, 0, 2, k, mx, my, mz, q> integrals
+	  (primA->x, primA->y, primA->z, primA->exp,
+	   primB->x, primB->y, primB->z, primB->exp,
+	   alpha);
+	
+	buffer[ij+ 0* 6+ 0] = cc * integrals.template compute_pair<0,0,0, 1,1,0>();
+	buffer[ij+ 0* 6+ 1] = cc * integrals.template compute_pair<0,0,0, 1,0,1>();
+	buffer[ij+ 0* 6+ 2] = cc * integrals.template compute_pair<0,0,0, 0,1,1>();
+	buffer[ij+ 0* 6+ 3] = cc * integrals.template compute_pair<0,0,0, 2,0,0>();
+	buffer[ij+ 0* 6+ 4] = cc * integrals.template compute_pair<0,0,0, 0,2,0>();
+	buffer[ij+ 0* 6+ 5] = cc * integrals.template compute_pair<0,0,0, 0,0,2>();
+      }
+    } else if (lA == 1) {
+      if (lB == 0) {
+	// ps integrals
+	PolarizationIntegral<real, 1, 0, k, mx, my, mz, q> integrals
+	  (primA->x, primA->y, primA->z, primA->exp,
+	   primB->x, primB->y, primB->z, primB->exp,
+	   alpha);
+	
+	buffer[ij+ 0* 1+ 0] = cc * integrals.template compute_pair<1,0,0, 0,0,0>();
+	buffer[ij+ 1* 1+ 0] = cc * integrals.template compute_pair<0,1,0, 0,0,0>();
+	buffer[ij+ 2* 1+ 0] = cc * integrals.template compute_pair<0,0,1, 0,0,0>();
+      } else if (lB == 1) {
+	// pp integrals
+	PolarizationIntegral<real, 1, 1, k, mx, my, mz, q> integrals
+	  (primA->x, primA->y, primA->z, primA->exp,
+	   primB->x, primB->y, primB->z, primB->exp,
+	   alpha);
+	
+	buffer[ij+ 0* 3+ 0] = cc * integrals.template compute_pair<1,0,0, 1,0,0>();
+	buffer[ij+ 0* 3+ 1] = cc * integrals.template compute_pair<1,0,0, 0,1,0>();
+	buffer[ij+ 0* 3+ 2] = cc * integrals.template compute_pair<1,0,0, 0,0,1>();
+	buffer[ij+ 1* 3+ 0] = cc * integrals.template compute_pair<0,1,0, 1,0,0>();
+	buffer[ij+ 1* 3+ 1] = cc * integrals.template compute_pair<0,1,0, 0,1,0>();
+	buffer[ij+ 1* 3+ 2] = cc * integrals.template compute_pair<0,1,0, 0,0,1>();
+	buffer[ij+ 2* 3+ 0] = cc * integrals.template compute_pair<0,0,1, 1,0,0>();
+	buffer[ij+ 2* 3+ 1] = cc * integrals.template compute_pair<0,0,1, 0,1,0>();
+	buffer[ij+ 2* 3+ 2] = cc * integrals.template compute_pair<0,0,1, 0,0,1>();
+      } else if (lB == 2) {
+	// pd integrals
+	PolarizationIntegral<real, 1, 2, k, mx, my, mz, q> integrals
+	  (primA->x, primA->y, primA->z, primA->exp,
+	   primB->x, primB->y, primB->z, primB->exp,
+	   alpha);
+	
+	buffer[ij+ 0* 6+ 0] = cc * integrals.template compute_pair<1,0,0, 1,1,0>();
+	buffer[ij+ 0* 6+ 1] = cc * integrals.template compute_pair<1,0,0, 1,0,1>();
+	buffer[ij+ 0* 6+ 2] = cc * integrals.template compute_pair<1,0,0, 0,1,1>();
+	buffer[ij+ 0* 6+ 3] = cc * integrals.template compute_pair<1,0,0, 2,0,0>();
+	buffer[ij+ 0* 6+ 4] = cc * integrals.template compute_pair<1,0,0, 0,2,0>();
+	buffer[ij+ 0* 6+ 5] = cc * integrals.template compute_pair<1,0,0, 0,0,2>();
+	buffer[ij+ 1* 6+ 0] = cc * integrals.template compute_pair<0,1,0, 1,1,0>();
+	buffer[ij+ 1* 6+ 1] = cc * integrals.template compute_pair<0,1,0, 1,0,1>();
+	buffer[ij+ 1* 6+ 2] = cc * integrals.template compute_pair<0,1,0, 0,1,1>();
+	buffer[ij+ 1* 6+ 3] = cc * integrals.template compute_pair<0,1,0, 2,0,0>();
+	buffer[ij+ 1* 6+ 4] = cc * integrals.template compute_pair<0,1,0, 0,2,0>();
+	buffer[ij+ 1* 6+ 5] = cc * integrals.template compute_pair<0,1,0, 0,0,2>();
+	buffer[ij+ 2* 6+ 0] = cc * integrals.template compute_pair<0,0,1, 1,1,0>();
+	buffer[ij+ 2* 6+ 1] = cc * integrals.template compute_pair<0,0,1, 1,0,1>();
+	buffer[ij+ 2* 6+ 2] = cc * integrals.template compute_pair<0,0,1, 0,1,1>();
+	buffer[ij+ 2* 6+ 3] = cc * integrals.template compute_pair<0,0,1, 2,0,0>();
+	buffer[ij+ 2* 6+ 4] = cc * integrals.template compute_pair<0,0,1, 0,2,0>();
+	buffer[ij+ 2* 6+ 5] = cc * integrals.template compute_pair<0,0,1, 0,0,2>();
+      }
+    } else if (lA == 2) {
+      if (lB == 0) {
+	// ds integrals
+	PolarizationIntegral<real, 2, 0, k, mx, my, mz, q> integrals
+	  (primA->x, primA->y, primA->z, primA->exp,
+	   primB->x, primB->y, primB->z, primB->exp,
+	   alpha);
+	
+	buffer[ij+ 0* 1+ 0] = cc * integrals.template compute_pair<1,1,0, 0,0,0>();
+	buffer[ij+ 1* 1+ 0] = cc * integrals.template compute_pair<1,0,1, 0,0,0>();
+	buffer[ij+ 2* 1+ 0] = cc * integrals.template compute_pair<0,1,1, 0,0,0>();
+	buffer[ij+ 3* 1+ 0] = cc * integrals.template compute_pair<2,0,0, 0,0,0>();
+	buffer[ij+ 4* 1+ 0] = cc * integrals.template compute_pair<0,2,0, 0,0,0>();
+	buffer[ij+ 5* 1+ 0] = cc * integrals.template compute_pair<0,0,2, 0,0,0>();
+      } else if (lB == 1) {
+	// dp integrals
+	PolarizationIntegral<real, 2, 1, k, mx, my, mz, q> integrals
+	  (primA->x, primA->y, primA->z, primA->exp,
+	   primB->x, primB->y, primB->z, primB->exp,
+	   alpha);
+	
+	buffer[ij+ 0* 3+ 0] = cc * integrals.template compute_pair<1,1,0, 1,0,0>();
+	buffer[ij+ 0* 3+ 1] = cc * integrals.template compute_pair<1,1,0, 0,1,0>();
+	buffer[ij+ 0* 3+ 2] = cc * integrals.template compute_pair<1,1,0, 0,0,1>();
+	buffer[ij+ 1* 3+ 0] = cc * integrals.template compute_pair<1,0,1, 1,0,0>();
+	buffer[ij+ 1* 3+ 1] = cc * integrals.template compute_pair<1,0,1, 0,1,0>();
+	buffer[ij+ 1* 3+ 2] = cc * integrals.template compute_pair<1,0,1, 0,0,1>();
+	buffer[ij+ 2* 3+ 0] = cc * integrals.template compute_pair<0,1,1, 1,0,0>();
+	buffer[ij+ 2* 3+ 1] = cc * integrals.template compute_pair<0,1,1, 0,1,0>();
+	buffer[ij+ 2* 3+ 2] = cc * integrals.template compute_pair<0,1,1, 0,0,1>();
+	buffer[ij+ 3* 3+ 0] = cc * integrals.template compute_pair<2,0,0, 1,0,0>();
+	buffer[ij+ 3* 3+ 1] = cc * integrals.template compute_pair<2,0,0, 0,1,0>();
+	buffer[ij+ 3* 3+ 2] = cc * integrals.template compute_pair<2,0,0, 0,0,1>();
+	buffer[ij+ 4* 3+ 0] = cc * integrals.template compute_pair<0,2,0, 1,0,0>();
+	buffer[ij+ 4* 3+ 1] = cc * integrals.template compute_pair<0,2,0, 0,1,0>();
+	buffer[ij+ 4* 3+ 2] = cc * integrals.template compute_pair<0,2,0, 0,0,1>();
+	buffer[ij+ 5* 3+ 0] = cc * integrals.template compute_pair<0,0,2, 1,0,0>();
+	buffer[ij+ 5* 3+ 1] = cc * integrals.template compute_pair<0,0,2, 0,1,0>();
+	buffer[ij+ 5* 3+ 2] = cc * integrals.template compute_pair<0,0,2, 0,0,1>();
+      } else if (lB == 2) {
+	// dd integrals
+	PolarizationIntegral<real, 2, 2, k, mx, my, mz, q> integrals
+	  (primA->x, primA->y, primA->z, primA->exp,
+	   primB->x, primB->y, primB->z, primB->exp,
+	   alpha);
+	
+	buffer[ij+ 0* 6+ 0] = cc * integrals.template compute_pair<1,1,0, 1,1,0>();
+	buffer[ij+ 0* 6+ 1] = cc * integrals.template compute_pair<1,1,0, 1,0,1>();
+	buffer[ij+ 0* 6+ 2] = cc * integrals.template compute_pair<1,1,0, 0,1,1>();
+	buffer[ij+ 0* 6+ 3] = cc * integrals.template compute_pair<1,1,0, 2,0,0>();
+	buffer[ij+ 0* 6+ 4] = cc * integrals.template compute_pair<1,1,0, 0,2,0>();
+	buffer[ij+ 0* 6+ 5] = cc * integrals.template compute_pair<1,1,0, 0,0,2>();
+	buffer[ij+ 1* 6+ 0] = cc * integrals.template compute_pair<1,0,1, 1,1,0>();
+	buffer[ij+ 1* 6+ 1] = cc * integrals.template compute_pair<1,0,1, 1,0,1>();
+	buffer[ij+ 1* 6+ 2] = cc * integrals.template compute_pair<1,0,1, 0,1,1>();
+	buffer[ij+ 1* 6+ 3] = cc * integrals.template compute_pair<1,0,1, 2,0,0>();
+	buffer[ij+ 1* 6+ 4] = cc * integrals.template compute_pair<1,0,1, 0,2,0>();
+	buffer[ij+ 1* 6+ 5] = cc * integrals.template compute_pair<1,0,1, 0,0,2>();
+	buffer[ij+ 2* 6+ 0] = cc * integrals.template compute_pair<0,1,1, 1,1,0>();
+	buffer[ij+ 2* 6+ 1] = cc * integrals.template compute_pair<0,1,1, 1,0,1>();
+	buffer[ij+ 2* 6+ 2] = cc * integrals.template compute_pair<0,1,1, 0,1,1>();
+	buffer[ij+ 2* 6+ 3] = cc * integrals.template compute_pair<0,1,1, 2,0,0>();
+	buffer[ij+ 2* 6+ 4] = cc * integrals.template compute_pair<0,1,1, 0,2,0>();
+	buffer[ij+ 2* 6+ 5] = cc * integrals.template compute_pair<0,1,1, 0,0,2>();
+	buffer[ij+ 3* 6+ 0] = cc * integrals.template compute_pair<2,0,0, 1,1,0>();
+	buffer[ij+ 3* 6+ 1] = cc * integrals.template compute_pair<2,0,0, 1,0,1>();
+	buffer[ij+ 3* 6+ 2] = cc * integrals.template compute_pair<2,0,0, 0,1,1>();
+	buffer[ij+ 3* 6+ 3] = cc * integrals.template compute_pair<2,0,0, 2,0,0>();
+	buffer[ij+ 3* 6+ 4] = cc * integrals.template compute_pair<2,0,0, 0,2,0>();
+	buffer[ij+ 3* 6+ 5] = cc * integrals.template compute_pair<2,0,0, 0,0,2>();
+	buffer[ij+ 4* 6+ 0] = cc * integrals.template compute_pair<0,2,0, 1,1,0>();
+	buffer[ij+ 4* 6+ 1] = cc * integrals.template compute_pair<0,2,0, 1,0,1>();
+	buffer[ij+ 4* 6+ 2] = cc * integrals.template compute_pair<0,2,0, 0,1,1>();
+	buffer[ij+ 4* 6+ 3] = cc * integrals.template compute_pair<0,2,0, 2,0,0>();
+	buffer[ij+ 4* 6+ 4] = cc * integrals.template compute_pair<0,2,0, 0,2,0>();
+	buffer[ij+ 4* 6+ 5] = cc * integrals.template compute_pair<0,2,0, 0,0,2>();
+	buffer[ij+ 5* 6+ 0] = cc * integrals.template compute_pair<0,0,2, 1,1,0>();
+	buffer[ij+ 5* 6+ 1] = cc * integrals.template compute_pair<0,0,2, 1,0,1>();
+	buffer[ij+ 5* 6+ 2] = cc * integrals.template compute_pair<0,0,2, 0,1,1>();
+	buffer[ij+ 5* 6+ 3] = cc * integrals.template compute_pair<0,0,2, 2,0,0>();
+	buffer[ij+ 5* 6+ 4] = cc * integrals.template compute_pair<0,0,2, 0,2,0>();
+	buffer[ij+ 5* 6+ 5] = cc * integrals.template compute_pair<0,0,2, 0,0,2>();
+      }
+    }
+    /**** END of automatically generated code *****/
+  }  else {
+    // These thread have nothing to do.
   }
-  PrimitivePair<real> pair = pairs[ipair];
-
-  Primitive<real> *primA = &(pair.primA);
-  Primitive<real> *primB = &(pair.primB);
-
-  // The coordinate system is assumed to have been shifted so that the 
-  // polarizable site lies at the origin.
-
-  // Polarization integrals can reuse data if angular momentum quantum numbers
-  // L(I)=angmomI and L(J)=angmomJ do not change. 
-
-  const int lA = primA->l;
-  const int lB = primB->l;
-
-  real cc = primA->coef * primB->coef;
-
-  // The integrals should be placed in the buffer at the positions
-  //   bufferIdx, bufferIdx + 1, ..., bufferIdx + num_angomA * num_angmomB
-  int ij = pair.bufferIdx;
-
-  // unrolled loops over all angular momentum components (lA,mA,nA) of primitive A
-  // and all angular momentum components (lB,mB,nB) of primitive B
-/**** BEGIN of automatically generated code (with code_generator.py) *****/
-  if (lA == 0) {
-    if (lB == 0) {
-      // ss integrals
-      PolarizationIntegral<real, 0, 0, k, mx, my, mz, q> integrals
-        (primA->x, primA->y, primA->z, primA->exp,
-         primB->x, primB->y, primB->z, primB->exp,
-         alpha);
-            
-      buffer[ij+ 0* 1+ 0] = cc * integrals.template compute_pair<0,0,0, 0,0,0>();
-    } else if (lB == 1) {
-      // sp integrals
-      PolarizationIntegral<real, 0, 1, k, mx, my, mz, q> integrals
-        (primA->x, primA->y, primA->z, primA->exp,
-         primB->x, primB->y, primB->z, primB->exp,
-         alpha);
-            
-      buffer[ij+ 0* 3+ 0] = cc * integrals.template compute_pair<0,0,0, 1,0,0>();
-      buffer[ij+ 0* 3+ 1] = cc * integrals.template compute_pair<0,0,0, 0,1,0>();
-      buffer[ij+ 0* 3+ 2] = cc * integrals.template compute_pair<0,0,0, 0,0,1>();
-    } else if (lB == 2) {
-      // sd integrals
-      PolarizationIntegral<real, 0, 2, k, mx, my, mz, q> integrals
-        (primA->x, primA->y, primA->z, primA->exp,
-         primB->x, primB->y, primB->z, primB->exp,
-         alpha);
-            
-      buffer[ij+ 0* 6+ 0] = cc * integrals.template compute_pair<0,0,0, 1,1,0>();
-      buffer[ij+ 0* 6+ 1] = cc * integrals.template compute_pair<0,0,0, 1,0,1>();
-      buffer[ij+ 0* 6+ 2] = cc * integrals.template compute_pair<0,0,0, 0,1,1>();
-      buffer[ij+ 0* 6+ 3] = cc * integrals.template compute_pair<0,0,0, 2,0,0>();
-      buffer[ij+ 0* 6+ 4] = cc * integrals.template compute_pair<0,0,0, 0,2,0>();
-      buffer[ij+ 0* 6+ 5] = cc * integrals.template compute_pair<0,0,0, 0,0,2>();
-    }
-  } else if (lA == 1) {
-    if (lB == 0) {
-      // ps integrals
-      PolarizationIntegral<real, 1, 0, k, mx, my, mz, q> integrals
-        (primA->x, primA->y, primA->z, primA->exp,
-         primB->x, primB->y, primB->z, primB->exp,
-         alpha);
-            
-      buffer[ij+ 0* 1+ 0] = cc * integrals.template compute_pair<1,0,0, 0,0,0>();
-      buffer[ij+ 1* 1+ 0] = cc * integrals.template compute_pair<0,1,0, 0,0,0>();
-      buffer[ij+ 2* 1+ 0] = cc * integrals.template compute_pair<0,0,1, 0,0,0>();
-    } else if (lB == 1) {
-      // pp integrals
-      PolarizationIntegral<real, 1, 1, k, mx, my, mz, q> integrals
-        (primA->x, primA->y, primA->z, primA->exp,
-         primB->x, primB->y, primB->z, primB->exp,
-         alpha);
-            
-      buffer[ij+ 0* 3+ 0] = cc * integrals.template compute_pair<1,0,0, 1,0,0>();
-      buffer[ij+ 0* 3+ 1] = cc * integrals.template compute_pair<1,0,0, 0,1,0>();
-      buffer[ij+ 0* 3+ 2] = cc * integrals.template compute_pair<1,0,0, 0,0,1>();
-      buffer[ij+ 1* 3+ 0] = cc * integrals.template compute_pair<0,1,0, 1,0,0>();
-      buffer[ij+ 1* 3+ 1] = cc * integrals.template compute_pair<0,1,0, 0,1,0>();
-      buffer[ij+ 1* 3+ 2] = cc * integrals.template compute_pair<0,1,0, 0,0,1>();
-      buffer[ij+ 2* 3+ 0] = cc * integrals.template compute_pair<0,0,1, 1,0,0>();
-      buffer[ij+ 2* 3+ 1] = cc * integrals.template compute_pair<0,0,1, 0,1,0>();
-      buffer[ij+ 2* 3+ 2] = cc * integrals.template compute_pair<0,0,1, 0,0,1>();
-    } else if (lB == 2) {
-      // pd integrals
-      PolarizationIntegral<real, 1, 2, k, mx, my, mz, q> integrals
-        (primA->x, primA->y, primA->z, primA->exp,
-         primB->x, primB->y, primB->z, primB->exp,
-         alpha);
-            
-      buffer[ij+ 0* 6+ 0] = cc * integrals.template compute_pair<1,0,0, 1,1,0>();
-      buffer[ij+ 0* 6+ 1] = cc * integrals.template compute_pair<1,0,0, 1,0,1>();
-      buffer[ij+ 0* 6+ 2] = cc * integrals.template compute_pair<1,0,0, 0,1,1>();
-      buffer[ij+ 0* 6+ 3] = cc * integrals.template compute_pair<1,0,0, 2,0,0>();
-      buffer[ij+ 0* 6+ 4] = cc * integrals.template compute_pair<1,0,0, 0,2,0>();
-      buffer[ij+ 0* 6+ 5] = cc * integrals.template compute_pair<1,0,0, 0,0,2>();
-      buffer[ij+ 1* 6+ 0] = cc * integrals.template compute_pair<0,1,0, 1,1,0>();
-      buffer[ij+ 1* 6+ 1] = cc * integrals.template compute_pair<0,1,0, 1,0,1>();
-      buffer[ij+ 1* 6+ 2] = cc * integrals.template compute_pair<0,1,0, 0,1,1>();
-      buffer[ij+ 1* 6+ 3] = cc * integrals.template compute_pair<0,1,0, 2,0,0>();
-      buffer[ij+ 1* 6+ 4] = cc * integrals.template compute_pair<0,1,0, 0,2,0>();
-      buffer[ij+ 1* 6+ 5] = cc * integrals.template compute_pair<0,1,0, 0,0,2>();
-      buffer[ij+ 2* 6+ 0] = cc * integrals.template compute_pair<0,0,1, 1,1,0>();
-      buffer[ij+ 2* 6+ 1] = cc * integrals.template compute_pair<0,0,1, 1,0,1>();
-      buffer[ij+ 2* 6+ 2] = cc * integrals.template compute_pair<0,0,1, 0,1,1>();
-      buffer[ij+ 2* 6+ 3] = cc * integrals.template compute_pair<0,0,1, 2,0,0>();
-      buffer[ij+ 2* 6+ 4] = cc * integrals.template compute_pair<0,0,1, 0,2,0>();
-      buffer[ij+ 2* 6+ 5] = cc * integrals.template compute_pair<0,0,1, 0,0,2>();
-    }
-  } else if (lA == 2) {
-    if (lB == 0) {
-      // ds integrals
-      PolarizationIntegral<real, 2, 0, k, mx, my, mz, q> integrals
-        (primA->x, primA->y, primA->z, primA->exp,
-         primB->x, primB->y, primB->z, primB->exp,
-         alpha);
-            
-      buffer[ij+ 0* 1+ 0] = cc * integrals.template compute_pair<1,1,0, 0,0,0>();
-      buffer[ij+ 1* 1+ 0] = cc * integrals.template compute_pair<1,0,1, 0,0,0>();
-      buffer[ij+ 2* 1+ 0] = cc * integrals.template compute_pair<0,1,1, 0,0,0>();
-      buffer[ij+ 3* 1+ 0] = cc * integrals.template compute_pair<2,0,0, 0,0,0>();
-      buffer[ij+ 4* 1+ 0] = cc * integrals.template compute_pair<0,2,0, 0,0,0>();
-      buffer[ij+ 5* 1+ 0] = cc * integrals.template compute_pair<0,0,2, 0,0,0>();
-    } else if (lB == 1) {
-      // dp integrals
-      PolarizationIntegral<real, 2, 1, k, mx, my, mz, q> integrals
-        (primA->x, primA->y, primA->z, primA->exp,
-         primB->x, primB->y, primB->z, primB->exp,
-         alpha);
-            
-      buffer[ij+ 0* 3+ 0] = cc * integrals.template compute_pair<1,1,0, 1,0,0>();
-      buffer[ij+ 0* 3+ 1] = cc * integrals.template compute_pair<1,1,0, 0,1,0>();
-      buffer[ij+ 0* 3+ 2] = cc * integrals.template compute_pair<1,1,0, 0,0,1>();
-      buffer[ij+ 1* 3+ 0] = cc * integrals.template compute_pair<1,0,1, 1,0,0>();
-      buffer[ij+ 1* 3+ 1] = cc * integrals.template compute_pair<1,0,1, 0,1,0>();
-      buffer[ij+ 1* 3+ 2] = cc * integrals.template compute_pair<1,0,1, 0,0,1>();
-      buffer[ij+ 2* 3+ 0] = cc * integrals.template compute_pair<0,1,1, 1,0,0>();
-      buffer[ij+ 2* 3+ 1] = cc * integrals.template compute_pair<0,1,1, 0,1,0>();
-      buffer[ij+ 2* 3+ 2] = cc * integrals.template compute_pair<0,1,1, 0,0,1>();
-      buffer[ij+ 3* 3+ 0] = cc * integrals.template compute_pair<2,0,0, 1,0,0>();
-      buffer[ij+ 3* 3+ 1] = cc * integrals.template compute_pair<2,0,0, 0,1,0>();
-      buffer[ij+ 3* 3+ 2] = cc * integrals.template compute_pair<2,0,0, 0,0,1>();
-      buffer[ij+ 4* 3+ 0] = cc * integrals.template compute_pair<0,2,0, 1,0,0>();
-      buffer[ij+ 4* 3+ 1] = cc * integrals.template compute_pair<0,2,0, 0,1,0>();
-      buffer[ij+ 4* 3+ 2] = cc * integrals.template compute_pair<0,2,0, 0,0,1>();
-      buffer[ij+ 5* 3+ 0] = cc * integrals.template compute_pair<0,0,2, 1,0,0>();
-      buffer[ij+ 5* 3+ 1] = cc * integrals.template compute_pair<0,0,2, 0,1,0>();
-      buffer[ij+ 5* 3+ 2] = cc * integrals.template compute_pair<0,0,2, 0,0,1>();
-    } else if (lB == 2) {
-      // dd integrals
-      PolarizationIntegral<real, 2, 2, k, mx, my, mz, q> integrals
-        (primA->x, primA->y, primA->z, primA->exp,
-         primB->x, primB->y, primB->z, primB->exp,
-         alpha);
-            
-      buffer[ij+ 0* 6+ 0] = cc * integrals.template compute_pair<1,1,0, 1,1,0>();
-      buffer[ij+ 0* 6+ 1] = cc * integrals.template compute_pair<1,1,0, 1,0,1>();
-      buffer[ij+ 0* 6+ 2] = cc * integrals.template compute_pair<1,1,0, 0,1,1>();
-      buffer[ij+ 0* 6+ 3] = cc * integrals.template compute_pair<1,1,0, 2,0,0>();
-      buffer[ij+ 0* 6+ 4] = cc * integrals.template compute_pair<1,1,0, 0,2,0>();
-      buffer[ij+ 0* 6+ 5] = cc * integrals.template compute_pair<1,1,0, 0,0,2>();
-      buffer[ij+ 1* 6+ 0] = cc * integrals.template compute_pair<1,0,1, 1,1,0>();
-      buffer[ij+ 1* 6+ 1] = cc * integrals.template compute_pair<1,0,1, 1,0,1>();
-      buffer[ij+ 1* 6+ 2] = cc * integrals.template compute_pair<1,0,1, 0,1,1>();
-      buffer[ij+ 1* 6+ 3] = cc * integrals.template compute_pair<1,0,1, 2,0,0>();
-      buffer[ij+ 1* 6+ 4] = cc * integrals.template compute_pair<1,0,1, 0,2,0>();
-      buffer[ij+ 1* 6+ 5] = cc * integrals.template compute_pair<1,0,1, 0,0,2>();
-      buffer[ij+ 2* 6+ 0] = cc * integrals.template compute_pair<0,1,1, 1,1,0>();
-      buffer[ij+ 2* 6+ 1] = cc * integrals.template compute_pair<0,1,1, 1,0,1>();
-      buffer[ij+ 2* 6+ 2] = cc * integrals.template compute_pair<0,1,1, 0,1,1>();
-      buffer[ij+ 2* 6+ 3] = cc * integrals.template compute_pair<0,1,1, 2,0,0>();
-      buffer[ij+ 2* 6+ 4] = cc * integrals.template compute_pair<0,1,1, 0,2,0>();
-      buffer[ij+ 2* 6+ 5] = cc * integrals.template compute_pair<0,1,1, 0,0,2>();
-      buffer[ij+ 3* 6+ 0] = cc * integrals.template compute_pair<2,0,0, 1,1,0>();
-      buffer[ij+ 3* 6+ 1] = cc * integrals.template compute_pair<2,0,0, 1,0,1>();
-      buffer[ij+ 3* 6+ 2] = cc * integrals.template compute_pair<2,0,0, 0,1,1>();
-      buffer[ij+ 3* 6+ 3] = cc * integrals.template compute_pair<2,0,0, 2,0,0>();
-      buffer[ij+ 3* 6+ 4] = cc * integrals.template compute_pair<2,0,0, 0,2,0>();
-      buffer[ij+ 3* 6+ 5] = cc * integrals.template compute_pair<2,0,0, 0,0,2>();
-      buffer[ij+ 4* 6+ 0] = cc * integrals.template compute_pair<0,2,0, 1,1,0>();
-      buffer[ij+ 4* 6+ 1] = cc * integrals.template compute_pair<0,2,0, 1,0,1>();
-      buffer[ij+ 4* 6+ 2] = cc * integrals.template compute_pair<0,2,0, 0,1,1>();
-      buffer[ij+ 4* 6+ 3] = cc * integrals.template compute_pair<0,2,0, 2,0,0>();
-      buffer[ij+ 4* 6+ 4] = cc * integrals.template compute_pair<0,2,0, 0,2,0>();
-      buffer[ij+ 4* 6+ 5] = cc * integrals.template compute_pair<0,2,0, 0,0,2>();
-      buffer[ij+ 5* 6+ 0] = cc * integrals.template compute_pair<0,0,2, 1,1,0>();
-      buffer[ij+ 5* 6+ 1] = cc * integrals.template compute_pair<0,0,2, 1,0,1>();
-      buffer[ij+ 5* 6+ 2] = cc * integrals.template compute_pair<0,0,2, 0,1,1>();
-      buffer[ij+ 5* 6+ 3] = cc * integrals.template compute_pair<0,0,2, 2,0,0>();
-      buffer[ij+ 5* 6+ 4] = cc * integrals.template compute_pair<0,0,2, 0,2,0>();
-      buffer[ij+ 5* 6+ 5] = cc * integrals.template compute_pair<0,0,2, 0,0,2>();
-    }
-  }
-/**** END of automatically generated code *****/
 }
 
 inline int kappa(int n) {
@@ -1591,11 +1578,11 @@ void polarization_prim_pairs(// pointer to array of pairs of primitives in pinne
   int buffer_size = integral_buffer_size<real>(pairs, npair);
   checkCuda( cudaMalloc((void **) &buffer_, sizeof(real) * buffer_size) );
 
-  // overlap data transfer and kernal computation by dividing the data
+  // overlap data transfer and kernel computation by dividing the data
   // into blocks and repeating the operations {copy H->D, kernel, copy D->H}
   // for each of them.
   //  see https://developer.nvidia.com/blog/how-overlap-data-transfers-cuda-cc/
-  const int num_streams = 4;
+  int num_streams = min(4, npair);
   cudaStream_t streams[num_streams];
   for (int s = 0; s < num_streams; s++)
     checkCuda( cudaStreamCreate(&streams[s]) );
@@ -1606,7 +1593,11 @@ void polarization_prim_pairs(// pointer to array of pairs of primitives in pinne
   for(int s = 0; s < num_streams; s++) {
     // 
     int block_size_inp = min((npair+num_streams-1) / num_streams, npair - offset_inp);
-    
+    if (!(block_size_inp > 0)) {
+      // nothing to do for this stream
+      break;
+    }
+
     // Host -> Device copy
     checkCuda( cudaMemcpyAsync(pairs_+offset_inp, pairs+offset_inp, 
 			       sizeof(PrimitivePair<real>) * block_size_inp,
@@ -1614,7 +1605,7 @@ void polarization_prim_pairs(// pointer to array of pairs of primitives in pinne
     // kernel computation
     // grid is a linear array
     dim3 blockDim(BLOCK_SIZE);
-    dim3 gridDim((npair + blockDim.x - 1)/blockDim.x);
+    dim3 gridDim((block_size_inp + blockDim.x - 1)/blockDim.x);
     // launch kernel
     print("launch kernel with  %d blocks of size %d each\n", gridDim.x, blockDim.x);
     polarization_prim_pairs_kernel<real, k, mx, my, mz, q>
@@ -1630,7 +1621,7 @@ void polarization_prim_pairs(// pointer to array of pairs of primitives in pinne
 			       sizeof(real) * block_size_out,
 			       cudaMemcpyDeviceToHost, streams[s]) );
 
-    print("Stream %d finished\n", s);
+    print("Stream %d \n", s);
     print("   input:   starting offset = %d  block size = %d\n", offset_inp, block_size_inp);
     print("   output:  starting offset = %d  block size = %d\n", offset_out, block_size_out);
 
@@ -1740,34 +1731,34 @@ template void polarization_prim_pairs<float,  3,   1, 0, 0,   2>
 
 // Op(r) = r(i)r(j)/|r|^6
 
-template void polarization_prim_pairs<double, 6,   0, 0, 2,   2>
+template void polarization_prim_pairs<double, 6,   0, 0, 2,   4>
         (const PrimitivePair<double> *pairs, int npair, double *buffer, double alpha);
-template void polarization_prim_pairs<float,  6,   0, 0, 2,   2>
+template void polarization_prim_pairs<float,  6,   0, 0, 2,   4>
         (const PrimitivePair<float> *pairs, int npair, float *buffer, float alpha);
 
-template void polarization_prim_pairs<double, 6,   0, 1, 1,   2>
+template void polarization_prim_pairs<double, 6,   0, 1, 1,   4>
         (const PrimitivePair<double> *pairs, int npair, double *buffer, double alpha);
-template void polarization_prim_pairs<float,  6,   0, 1, 1,   2>
+template void polarization_prim_pairs<float,  6,   0, 1, 1,   4>
         (const PrimitivePair<float> *pairs, int npair, float *buffer, float alpha);
 
-template void polarization_prim_pairs<double, 6,   0, 2, 0,   2>
+template void polarization_prim_pairs<double, 6,   0, 2, 0,   4>
         (const PrimitivePair<double> *pairs, int npair, double *buffer, double alpha);
-template void polarization_prim_pairs<float,  6,   0, 2, 0,   2>
+template void polarization_prim_pairs<float,  6,   0, 2, 0,   4>
         (const PrimitivePair<float> *pairs, int npair, float *buffer, float alpha);
 
-template void polarization_prim_pairs<double, 6,   1, 0, 1,   2>
+template void polarization_prim_pairs<double, 6,   1, 0, 1,   4>
         (const PrimitivePair<double> *pairs, int npair, double *buffer, double alpha);
-template void polarization_prim_pairs<float,  6,   1, 0, 1,   2>
+template void polarization_prim_pairs<float,  6,   1, 0, 1,   4>
         (const PrimitivePair<float> *pairs, int npair, float *buffer, float alpha);
 
-template void polarization_prim_pairs<double, 6,   1, 1, 0,   2>
+template void polarization_prim_pairs<double, 6,   1, 1, 0,   4>
         (const PrimitivePair<double> *pairs, int npair, double *buffer, double alpha);
-template void polarization_prim_pairs<float,  6,   1, 1, 0,   2>
+template void polarization_prim_pairs<float,  6,   1, 1, 0,   4>
         (const PrimitivePair<float> *pairs, int npair, float *buffer, float alpha);
 
-template void polarization_prim_pairs<double, 6,   2, 0, 0,   2>
+template void polarization_prim_pairs<double, 6,   2, 0, 0,   4>
         (const PrimitivePair<double> *pairs, int npair, double *buffer, double alpha);
-template void polarization_prim_pairs<float,  6,   2, 0, 0,   2>
+template void polarization_prim_pairs<float,  6,   2, 0, 0,   4>
         (const PrimitivePair<float> *pairs, int npair, float *buffer, float alpha);
 
 /**** END of automatically generated code *****/

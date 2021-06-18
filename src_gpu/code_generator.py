@@ -99,6 +99,8 @@ template void polarization_prim_pairs<float,  {k},   {mx}, {my}, {mz},   {q}>
     for mx,my,mz in partition3(1):
         code += declaration(3, mx,my,mz)
     # r(i)r(j)/r^6   
+    # square of cutoff power
+    q = q**2
     code += "\n// Op(r) = r(i)r(j)/|r|^6\n"
     for mx,my,mz in partition3(2):
         code += declaration(6, mx,my,mz)
@@ -150,6 +152,8 @@ def runtime_template_selection():
     code += "\n  // Op(r) = r(i)/|r|^3\n"
     code += cases(3, 1)
     # r(i)r(j)/r^6   
+    # square of cutoff power
+    q = q**2
     code += "\n  // Op(r) = r(i)r(j)/|r|^6\n"
     code += cases(6, 2)
 

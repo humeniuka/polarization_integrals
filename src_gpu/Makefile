@@ -3,19 +3,28 @@
 
 # compilers
 NVCC := nvcc
+
+## GNU compiler
 NVCXX := gcc
+LIBS := 
+CUFLAGS := -maxrregcount=63 -Xptxas --disable-optimizer-constants
+## Intel compiler
+#NVCXX := icpc
+#LIBS := -L/share/packages/compilers/intel/parallel_studio_xe_2017/compilers_and_libraries_2017.7.259/linux/compiler/lib/intel64/ -lirc
+#CUFLAGS := 
+
 ## architecture and compute capability 
 ## GeForce GTX TITAN X
 #CUARCH := -gencode=arch=compute_52,code=sm_52
-#NVLINK := -arch=sm_52
-## 1080ti
+#NVLINK := -arch=sm_52 $(LIBS)
+## GTX 1080 Ti
 CUARCH := -gencode=arch=compute_61,code=sm_61
-NVLINK := -arch=sm_61
+NVLINK := -arch=sm_61 $(LIBS)
+
 # 
 NVCXXFLAGS := -Wall -fPIC -O2 -DMKL_ILP64
-NVCUFLAGS := -O2 -use_fast_math -std=c++11 -ccbin $(NVCXX) $(CUARCH) \
-	-maxrregcount=63 --ptxas-options=-v --verbose --resource-usage \
-	-Xptxas --disable-optimizer-constants
+NVCUFLAGS := -O2 -use_fast_math -std=c++11 -ccbin $(NVCXX) $(CUARCH) $(CUFLAGS) \
+	     --ptxas-options=-v --verbose --resource-usage 
 ####################################################################################
 
 # pybind11

@@ -70,17 +70,17 @@ std::vector<real> polarization_prim_pairs_wrapper(
 
   // Op(r) = r(i)r(j)/|r|^6
   case 776:
-    polarization_prim_pairs<real, 6, 0,0,2, 2>(pairs, npair, buffer, alpha); break;
+    polarization_prim_pairs<real, 6, 0,0,2, 4>(pairs, npair, buffer, alpha); break;
   case 788:
-    polarization_prim_pairs<real, 6, 0,1,1, 2>(pairs, npair, buffer, alpha); break;
+    polarization_prim_pairs<real, 6, 0,1,1, 4>(pairs, npair, buffer, alpha); break;
   case 800:
-    polarization_prim_pairs<real, 6, 0,2,0, 2>(pairs, npair, buffer, alpha); break;
+    polarization_prim_pairs<real, 6, 0,2,0, 4>(pairs, npair, buffer, alpha); break;
   case 836:
-    polarization_prim_pairs<real, 6, 1,0,1, 2>(pairs, npair, buffer, alpha); break;
+    polarization_prim_pairs<real, 6, 1,0,1, 4>(pairs, npair, buffer, alpha); break;
   case 848:
-    polarization_prim_pairs<real, 6, 1,1,0, 2>(pairs, npair, buffer, alpha); break;
+    polarization_prim_pairs<real, 6, 1,1,0, 4>(pairs, npair, buffer, alpha); break;
   case 896:
-    polarization_prim_pairs<real, 6, 2,0,0, 2>(pairs, npair, buffer, alpha); break;
+    polarization_prim_pairs<real, 6, 2,0,0, 4>(pairs, npair, buffer, alpha); break;
   default:
     throw std::runtime_error("No template instance found for this combination of k, mx,my,mz, q ! Add it and recompile. ");
   }

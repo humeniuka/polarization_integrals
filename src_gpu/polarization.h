@@ -6,8 +6,10 @@
 //////////////////// CUDA-specific options /////////////////////////////
 // use pinned memory to overlap kernel computation and data transfer
 #define PINNED_MEMORY
-// threads per block
-#define BLOCK_SIZE (512)
+// threads per block. There are dependencies between the number of threads per block
+// and the number of registers per thread. This setting should not be changed unless
+// you know exactly what you are doing.
+#define BLOCK_SIZE (64)
 
 //////////////////// DEBUG options /////////////////////////////////////
 #undef DEBUG
@@ -55,13 +57,10 @@ struct AtomicOrbital {
 //! Determine number of AO functions in a shell of momentum l=lx+ly+lz.
 #define ANGL_FUNCS(l) ((l+1)*(l+2)/2)
 
-// compile-time minimum and maximum of two integers
-__device__ constexpr int Min(const int x, const int y) {
-  return (x < y ? x : y);
-}
-__device__ constexpr int Max(const int x, const int y) {
-  return (x > y ? x : y);
-}
+// compile-time minimum and maximum of two integers, 
+// should only ever be used with constants to avoid double evaluation
+#define Min(x, y)   ( (x) < (y) ? (x) : (y) )
+#define Max(x, y)   ( (x) > (y) ? (x) : (y) )
 
 // The macros are defined in terms of template parameters.
 // This is a hack to define fixed arrays, where the size has to be a constant.
