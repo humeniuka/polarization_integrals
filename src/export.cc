@@ -4,9 +4,11 @@
 #include <pybind11/pybind11.h>
 
 #include "polarization.h"
+#include "radial_overlap.h"
 
 namespace py = pybind11;
 using namespace pybind11::literals;
+
 
 // <for testing only
 extern double test_d_func(double x, int p, double w0);
@@ -138,6 +140,46 @@ where `li` and `lj` are the angular momenta specified when creating the `Polariz
 )LITERAL",
 	 "nxi"_a, "nyi"_a, "nzi"_a,
 	 "nxj"_a, "nyj"_a, "nzj"_a);
+  m.def("radial_overlap", &radial_overlap<double>,
+	R"LITERAL(
+overlap integral between squares of spherically symmetric Cartesian Gaussian orbitals with angular momentum li and lj
+The radial Gaussians have the form
+
+                    li                      2
+   RGTO (r) = (r-ri)    exp(-beta_i (r - ri) )
+       i 
+
+The overlap integral of the squares is
+
+    (2)  /     2         2      
+   S   = | RGTO (r)  RGTO (r)
+    ij   /     i         j
+
+Parameters
+----------
+xi,yi,zi    :    floats
+  Cartesian coordinates of first center ri
+li          :    int >= 0
+  total angular momentum of first center
+beta_i      :    float > 0
+  Gaussian exponent of first center
+xj,yj,zj    :    floats
+  Cartesian coordiantes of second center rj
+lj          :    int >= li
+  total angular momentum of second center.
+  If the second center has a smaller angular momentum than the first one,
+  the two Gaussian primitives should be swapped before calling this function.
+beta_j      :    float > 0
+  Gaussian exponent of second center
+
+Returns
+-------
+olap        :    float
+  value of integral S^(2)_ij
+
+)LITERAL",
+	"xi"_a, "yi"_a, "zi"_a, "li"_a, "beta_i"_a,
+	"xj"_a, "yj"_a, "zj"_a, "lj"_a, "beta_j"_a);
   // <only for testing
   m.def("test_d_func", &test_d_func, "export implementation of d(p+1/2,x) for testing");
   m.def("test_d_func_zero_limit", &test_d_func_zero_limit, "export implementation of \tilde{d}(p+1/2,x) for testing");

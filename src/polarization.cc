@@ -709,7 +709,10 @@ PolarizationIntegral::PolarizationIntegral(
 	// Case 2: k=2*j+1 and x < x_small
 	assert(k == 2*j+1);
 
-	double expx, expxmw0;
+	// expx and expxmw0 are initialized to 0 only to silence an
+	// unwarranted warning about these variables being used without initialization
+	double expx = 0.0;
+	double expxmw0 = 0.0;
 	if (s_max-j >= 0) {
 	  /* 
 	   compute integrals from Taylor expansion for small x

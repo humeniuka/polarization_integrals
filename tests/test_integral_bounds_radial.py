@@ -30,7 +30,7 @@ def kappa(n):
     else:
         return (n+1)/2
 
-def plot_integrals_vs_bounds(exact, bound):
+def plot_integrals_vs_bounds(exact, bound, bound_rad):
     import matplotlib
     matplotlib.rc('xtick', labelsize=16)
     matplotlib.rc('ytick', labelsize=16)
@@ -52,6 +52,7 @@ def plot_integrals_vs_bounds(exact, bound):
     xmax = max(exact.max(), bound.max())
     
     plt.plot(exact, bound, "o", fillstyle='none', color='blue', label="Cauchy-Schwarz")
+    plt.plot(exact, bound_rad, "x", fillstyle='none', color='green', label="Cauchy-Schwarz (approx.)")
     # straight line ~ perfectly tight bound
     plt.plot([xmin,xmax], [xmin,xmax], color="black", label="perfect correlation")
 
@@ -73,24 +74,27 @@ class TestUpperBound(unittest.TestCase):
         self.exact = []
         # upper bounds
         self.bound = []
+        # upper bounds based on approximating Cartesian Gaussians by spherically symmetric ones
+        self.bound_rad = []
         
         self._small_b()
         self._large_b()
 
         self.exact = np.array(self.exact)
         self.bound = np.array(self.bound)
+        self.bound_rad = np.array(self.bound_rad)
         #
-        np.savetxt("/tmp/exact_vs_bound.dat", np.vstack((self.exact, self.bound)).T)
+        np.savetxt("/tmp/exact_vs_bound.dat", np.vstack((self.exact, self.bound, self.bound_rad)).T)
         
-        plot_integrals_vs_bounds(self.exact, self.bound)
+        plot_integrals_vs_bounds(self.exact, self.bound, self.bound_rad)
         
     def _small_b(self):
         """polarization integrals and upper bounds 
         for basis centers on opposite sides of the origin (b=0)"""
         # cutoff function
-        alpha = 50.0
+        alpha = 4.0
 
-        n_samples = 1
+        n_samples = 50
         for i in range(0, n_samples):
             if self.verbosity > 0:
                 print(f"Random sample {i}")
@@ -108,7 +112,7 @@ class TestUpperBound(unittest.TestCase):
     def _large_b(self):
         """polarization integrals and upper bounds for basis centers at random locations"""
         # cutoff function
-        alpha = 50.0
+        alpha = 4.0
 
         n_samples = 50
         for i in range(0, n_samples):
@@ -126,53 +130,55 @@ class TestUpperBound(unittest.TestCase):
             
     def _compare_all_integrals(self, xi,yi,zi, beta_i, xj,yj,zj, beta_j, alpha):
         """
-        enumerate all polarization integrals that satisfy the following conditions
-        on the integer parameters:
-
-           k           3 or 4
-           mx+my+mz    1 or 0
-           nxi+nyi+nzi in [0,1,2]   s,p and d-functions
-           nxj+nyj+nzj in [0,1,2]
-
+        enumerate all polarization integrals that are needed for the polarization Hamiltonian
         and check that the numerical integrals are smaller than the upper bounds.
         """
-        # Check integrals up to d-function
-        l_max = 2
+        # Check integrals up to f-function
+        l_max = 3
         
         # enumerate powers of polarization operator
-        for (k,mmax) in [(3,1), (4,0)]:
-            for mx,my,mz in partition3(mmax):
-                # power of cutoff function
-                q = max(2, int(kappa(k) - kappa(mx) - kappa(my) + kappa(mz) - 1))
-                # enumerate angular momenta of basis functions
-                for li in range(0, l_max+1):
-                    for lj in range(0, l_max+1):
-                        # prepare for integrals between shells with angular momenta li and lj
-                        pol = PolarizationIntegral(xi,yi,zi, li, beta_i,
-                                                   xj,yj,zj, lj, beta_j,
-                                                   k, mx,my,mz,
-                                                   alpha, q)
-                        for nxi,nyi,nzi in partition3(li):
-                            for nxj,nyj,nzj in partition3(lj):
-                                label=f"k={k} mx={mx} my={my} mz={mz} , q={q} , nxi={nxi} nyi={nyi} nzi={nzi} , nxj={nxj} nyj={nyj} nzj={nzj}"
-                                with self.subTest(label=label):
-                                    # fast C++ implementation
-                                    pint = pol.compute_pair(nxi,nyi,nzi,
-                                                            nxj,nyj,nzj)
+        for (k,mx,my,mz,q) in [(3,1,0,0, 2), (6,2,0,0, 4)]:
+            # enumerate angular momenta of basis functions
+            for li in range(0, l_max+1):
+                for lj in range(0, l_max+1):
+                    # prepare for integrals between shells with angular momenta li and lj
+                    pol = PolarizationIntegral(xi,yi,zi, li, beta_i,
+                                               xj,yj,zj, lj, beta_j,
+                                               k, mx,my,mz,
+                                               alpha, q)
+                    for nxi,nyi,nzi in partition3(li):
+                        for nxj,nyj,nzj in partition3(lj):
+                            label=f"k={k} mx={mx} my={my} mz={mz} , q={q} , nxi={nxi} nyi={nyi} nzi={nzi} , nxj={nxj} nyj={nyj} nzj={nzj}"
+                            with self.subTest(label=label):
+                                # fast C++ implementation
+                                pint = pol.compute_pair(nxi,nyi,nzi,
+                                                        nxj,nyj,nzj)
+                                """
+                                # upper bound to pint
+                                pint_bound = upper_bound(xi,yi,zi, nxi,nyi,nzi, beta_i,
+                                                         xj,yj,zj, nxj,nyj,nzj, beta_j,
+                                                         k, mx,my,mz,
+                                                         alpha, q)
+                                """
+                                # less tight upper bound
+                                pint_bound_rad = upper_bound_radial(xi,yi,zi, nxi,nyi,nzi, beta_i,
+                                                                    xj,yj,zj, nxj,nyj,nzj, beta_j,
+                                                                    k, mx,my,mz,
+                                                                    alpha, q)
+                                ### DEBUG
+                                pint_bound = pint_bound_rad
+                                ###
+                                
+                                if self.verbosity > 0:
+                                    print(label + f"  |integral|= {abs(pint):+12.7f}  upper bound= {pint_bound:+12.7f}  upper bound (radial) = {pint_bound_rad:+12.7f}")
 
-                                    # upper bound to pint
-                                    pint_bound = upper_bound(xi,yi,zi, nxi,nyi,nzi, beta_i,
-                                                             xj,yj,zj, nxj,nyj,nzj, beta_j,
-                                                             k, mx,my,mz,
-                                                             alpha, q)
-                                    
-                                    if self.verbosity > 0:
-                                        print(label + f"  |integral|= {abs(pint):+12.7f}  upper bound= {pint_bound:+12.7f}")
-
-                                    self.exact.append(pint)
-                                    self.bound.append(pint_bound)
-                                    
-                                    self.assertTrue(abs(pint) <= pint_bound)
+                                self.exact.append(pint)
+                                self.bound.append(pint_bound)
+                                self.bound_rad.append(pint_bound_rad)
+                                
+                                self.assertTrue(abs(pint) <= pint_bound)
+                                self.assertTrue(abs(pint_bound) <= abs(pint_bound_rad))
+                                self.assertTrue(abs(pint) <= pint_bound_rad)
 
 if __name__ == '__main__':
     # make random numbers reproducible
