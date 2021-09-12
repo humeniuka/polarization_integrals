@@ -82,3 +82,47 @@ def polarization_integral(xi, yi, zi,   nxi, nyi, nzi,  beta_i,
     integ = becke.integral(atoms, integrand)
 
     return integ
+
+def overlap_integral(xi, yi, zi,   nxi, nyi, nzi,  beta_i,
+                     xj, yj, zj,   nxj, nyj, nzj,  beta_j):
+    """
+    overlap <i|j> between unnormalized Cartesian GTOs 
+    by numerical integration on a multicenter Becke grid
+
+    Parameters
+    ----------
+    xi,yi,zi     :    floats
+      Cartesian positions of center i
+    nxi,nyi,nzi  :    int >= 0
+      powers of Cartesian primitive GTO i
+    beta_i       :    float > 0
+      exponent of radial part of orbital i
+    xj,yj,zj     :    floats
+      Cartesian positions of center j
+    nxj,nyj,nzj  :    int >= 0
+      powers of Cartesian primitive GTO j
+    beta_j       :    float > 0
+      exponent of radial part of orbital j
+    """
+    # unnormalized bra and ket Gaussian type orbitals
+    def CGTOi(x,y,z):
+        dx, dy, dz = x-xi, y-yi, z-zi
+        dr2 = dx*dx+dy*dy+dz*dz
+        return pow(dx, nxi)*pow(dy,nyi)*pow(dz,nzi) * np.exp(-beta_i * dr2)
+
+    def CGTOj(x,y,z):
+        dx, dy, dz = x-xj, y-yj, z-zj
+        dr2 = dx*dx+dy*dy+dz*dz
+        return pow(dx, nxj)*pow(dy,nyj)*pow(dz,nzj) * np.exp(-beta_j * dr2)
+
+    def integrand(x,y,z):
+        return CGTOi(x,y,z) * CGTOj(x,y,z)
+
+    # place a spherical grid on each center: ri, rj
+    atoms = [(1, (xi, yi, zi)),
+             (1, (xj, yj, zj))]
+
+    # do the integral numerically
+    olap = becke.integral(atoms, integrand)
+
+    return olap
