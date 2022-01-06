@@ -133,3 +133,5 @@ References
       https://doi.org/10.1103/PhysRevA.37.2834
 [CPP-Erratum] Phys. Rev. A 42, 665
       https://doi.org/10.1103/PhysRevA.42.665
+[CPP-Erratum2] Phys. Rev. A 103, 069901
+      https://doi.org/10.1103/PhysRevA.103.069901
