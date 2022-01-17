@@ -26,7 +26,7 @@ for :math:`k > 2`. The power of the cutoff function :math:`q` has to satisfy
 
 .. math::
    
-  q \geq \kappa(k/2) - \kappa(m_x/2) - \kappa(m_y/2) - \kappa(m_z/2) - 1
+  q \geq \kappa(k) - \kappa(m_x) - \kappa(m_y) - \kappa(m_z) - 1
 
 where
 
