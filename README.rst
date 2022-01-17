@@ -58,7 +58,12 @@ The package is installed by running
 
    $ pip install -e .
 
-To check the proper functioning of the code, it is recommended to run a set of tests with
+Tests
+-----
+To check the proper functioning of the code, it is recommended to run a set of tests.
+In order to compute the numerical integrals needed for comparison one first has to install
+the python package `becke` from https://github.com/humeniuka/becke_multicenter_integration .
+Then the test suite is run with
    
 .. code-block:: bash
 
