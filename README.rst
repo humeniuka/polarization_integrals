@@ -148,7 +148,7 @@ Files
 -----
 The directory tree below depicts the structure of the source code package:
 
-
+```
 │   setup.py                             script for installing python package
 │   README.rst                           instructions on installation and usage
 │   LICENSE.txt                          MIT license
@@ -194,6 +194,6 @@ The directory tree below depicts the structure of the source code package:
 │   │   errors.py                      - comparison of numerical errors between CPU and GPU implementations
 │   │   test_integrals_gpu_sp.py       - test cases in single precision
 │   │   test_integrals_gpu_dp.py       - test cases double precision
-
+```
 
 
