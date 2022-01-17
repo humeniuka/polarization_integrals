@@ -84,9 +84,10 @@ class TestUpperBound(unittest.TestCase):
         self.bound = np.array(self.bound)
         self.bound_rad = np.array(self.bound_rad)
         #
-        np.savetxt("/tmp/exact_vs_bound.dat", np.vstack((self.exact, self.bound, self.bound_rad)).T)
+        #np.savetxt("/tmp/exact_vs_bound.dat", np.vstack((self.exact, self.bound, self.bound_rad)).T)
         
-        plot_integrals_vs_bounds(self.exact, self.bound, self.bound_rad)
+        # Disable plotting if test suite is run on cluster without graphics 
+        #plot_integrals_vs_bounds(self.exact, self.bound, self.bound_rad)
         
     def _small_b(self):
         """polarization integrals and upper bounds 

@@ -590,6 +590,8 @@ class TestSchwedtfegerSpecialFunctions(unittest.TestCase):
             plt.savefig("/tmp/dawson-error_hybrid_m-function.svg")
             plt.savefig("/tmp/dawson-error_hybrid_m-function.png", dpi=300)
             plt.show()
+
+        # Disable plotting if test suite is run on cluster without graphics
         #plot_m_function()
 
     def test_m_func_cpp(self):

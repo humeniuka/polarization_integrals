@@ -140,3 +140,60 @@ References
       https://doi.org/10.1103/PhysRevA.42.665
 [CPP-Erratum2] Phys. Rev. A 103, 069901
       https://doi.org/10.1103/PhysRevA.103.069901
+[library] A. Humeniuk, W. Glover,
+      'Efficient CPU and GPU implementations of multicenter integrals over long-range operators using Cartesian Gaussian functions',
+      submitted
+
+Files
+-----
+The directory tree below depicts the structure of the source code package:
+
+
+│   setup.py                             script for installing python package
+│   README.rst                           instructions on installation and usage
+│   LICENSE.txt                          MIT license
+│
+└───polarization_integrals               python package
+│   │   __init__.py
+│
+└───src
+│   │   export.cc                      - python wrapper around CPU implementation
+│   │   Faddeeva.hh                    - error and Dawson function for x >= 6.0
+│   │   Faddeeva.cc
+│   │   polarization.h                 - definition of PolarizationIntegral class
+│   │   polarization.cc                  CPU implementation of polarization integrals
+│   │   radial_overlap.h               - analytical overlap integrals between squares
+│   │   radial_overlap.cc                of radial Gaussian basis functions
+│   │   Makefile                       - compile python module for CPU integrals
+│   │
+│   
+└───src_gpu
+│   │   export.cc                      - python wrapper around GPU implementation
+│   │   Dawson.cu                      - implementation of Dawson function for x >= 6.0
+│   │   Dawson_real.cu                 - automatically generated from Dawson.cu
+│   │   polarization.h                 - definition of Primitive, PrimitivePair and PolarizationIntegral classes
+│   │   polarization.cu                - GPU implementation of polarization integrals
+│   │   double_to_real_cast.sh         - convenience script for replacing numerical constants in source code
+│   │   Makefile                       - compile python module for GPU integrals with single and double precision
+│   │   code_generator.py              - Parts of the C++ code were generated automatically using this script.
+│   │   README.txt                     - instructions on profiling GPU implementation
+│   │   test.cu                        - example for using GPU code
+│   │   run_tests.sh                   - run and benchmark GPU code in single and double precision
+│
+└───tests
+│   │   example.py                     - simple example demonstrating how to use the library
+│   │   make_table_I.py                - produce table I in the article
+│   │   polarization_ints_numerical.py - numerical integrals using Becke's scheme
+│   │   polarization_ints_reference.py - pure python implementation of some integrals
+│   │   upper_bounds.py                - numerical integrals of right-hand side of Cauchy-Schwarz inequality
+│   │   radial_overlap.py              - numerical overlaps using Becke's scheme
+│   │   test_###.py                    - different tests
+│   │   ...
+│
+└───tests_gpu
+│   │   errors.py                      - comparison of numerical errors between CPU and GPU implementations
+│   │   test_integrals_gpu_sp.py       - test cases in single precision
+│   │   test_integrals_gpu_dp.py       - test cases double precision
+
+
+
