@@ -7,7 +7,7 @@ The polarization integrals are defined as
 
 .. math::
 
-   \langle \text{CGTO}_i \vert \frac{x^{m_x} y^{m_y} z^{m_z}}{r^k} \left(1 - e^{-\alpha r} \right)^q \vert \text{CGTO}_j \rangle
+   \langle \text{CGTO}_i \vert \frac{x^{m_x} y^{m_y} z^{m_z}}{r^k} \left(1 - e^{-\alpha r^2} \right)^q \vert \text{CGTO}_j \rangle
 
 between unnormalized primitive Cartesian Gaussian functions 
 
